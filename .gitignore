@@ -1,0 +1,42 @@
+# -----------------------------
+# R / RStudio
+# -----------------------------
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# -----------------------------
+# R temporary files
+# -----------------------------
+*.RDataTmp
+*.Rhistory
+*.Rapp.history
+
+# -----------------------------
+# Python / Jupyter (if present)
+# -----------------------------
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# -----------------------------
+# Data & model artifacts (avoid huge files in Git)
+# -----------------------------
+data/
+models/
+*.rds
+*.RDS
+*.csv
+*.parquet
+*.feather
+*.zip
+*.h5
+
+# -----------------------------
+# OS / IDE
+# -----------------------------
+.DS_Store
+.vscode/
