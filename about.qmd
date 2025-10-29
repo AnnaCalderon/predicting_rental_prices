@@ -1,0 +1,888 @@
+---
+title: "Predicting Airbnb Rental Prices in NYC"
+subtitle: "Building and Comparing Machine Learning Models for Price Forecasting"
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    toc: true
+    toc-depth: 3
+---
+
+## Overview
+
+This project predicts nightly Airbnb rental prices in New York City using machine learning.  
+The workflow includes:
+
+✅ **Data loading & preprocessing**  
+✅ **Feature engineering** (amenity extraction, zipcode aggregates, imputation)  
+✅ **Modeling using three algorithms:**
+   - Random Forest  
+   - Elastic Net  
+   - XGBoost  
+✅ **Model evaluation**  
+✅ **Model selection**  
+✅ **Diagnostic visualizations**
+
+The final model can be used to generate price predictions for new, unseen listings.
+
+
+```{r set-up}
+#| include: false
+#if (!dir.exists("models")) dir.create("models")
+```
+
+## 1. Load Libraries & Set global options
+
+```{r packages}
+
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+options(download.file.method = "libcurl")
+
+# Install guards (optional). Comment these out if your env already has them.
+# core_pkgs <- c("rlang","cli","vctrs","pillar","lifecycle","openssl")
+# try(suppressWarnings(install.packages(core_pkgs, type = "binary")), silent = TRUE)
+
+need <- c("tidyverse","janitor","caret","ranger","glmnet","xgboost","rsample","gt","patchwork","scales")
+to_get <- need[!sapply(need, requireNamespace, quietly = TRUE)]
+if (length(to_get)) install.packages(to_get, type = "binary")
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(janitor)
+  library(caret)
+  library(ranger)
+  library(glmnet)
+  library(xgboost)
+  library(rsample)
+  library(gt)
+  library(patchwork)
+  library(scales)
+})
+
+set.seed(5656)
+
+# ---- Global plot aesthetics ----
+theme_set(theme_minimal(base_size = 12))
+update_geom_defaults("point", list(alpha = 0.7))
+
+fmt_dollar <- scales::label_dollar(accuracy = 1, prefix = "$", big.mark = ",", largest_with_cents = 100)
+```
+
+## 2. Data Cleaning & Feature Engineering
+
+Data cleaning summary:
+
+- Missing beds are predicted using a regression model based on accommodates  
+- Zipcodes with missing values are imputed to the modal zipcode  
+- Amenities are separated and counted using tokenization  
+- Review ratings are normalized to a 0–5 scale  
+- Neighborhood price averages and medians are added without data leakage  
+
+```{r load-data}
+
+analysisData <- suppressWarnings(
+  readr::read_csv(
+    "data/analysis_data.csv",
+    col_types = cols(
+      id = col_integer(),
+      price = col_double(),
+      beds = col_double(),
+      bedrooms = col_double(),
+      bathrooms = col_double(),
+      accommodates = col_integer(),
+      review_scores_rating = col_double(),
+      number_of_reviews = col_integer(),
+      property_type = col_character(),
+      bed_type = col_character(),
+      neighbourhood_group_cleansed = col_character(),
+      room_type = col_character(),
+      cancellation_policy = col_character(),
+      host_is_superhost = col_character(),
+      instant_bookable  = col_character(),
+      zipcode = col_character(),
+      city = col_character(),
+      amenities = col_character()
+    )
+  )
+)
+
+
+
+scoring_exists <- file.exists("scoringData.csv")
+scoringData <- if (scoring_exists) readr::read_csv("scoringData.csv", show_col_types = FALSE) else NULL
+
+# Ensure common types BEFORE combining (zipcode as character)
+
+if ("zipcode" %in% names(analysisData)) analysisData <- analysisData %>% mutate(zipcode = as.character(zipcode))
+if (!is.null(scoringData) && "zipcode" %in% names(scoringData)) scoringData <- scoringData %>% mutate(zipcode = as.character(zipcode))
+
+
+
+```
+
+
+
+```{r split}
+# 70/30 split stratified by price
+
+split_obj <- rsample::initial_split(analysisData, prop = 0.70, strata = price)
+train <- rsample::training(split_obj)  %>% mutate(train_test_score = "train")
+test  <- rsample::testing(split_obj)   %>% mutate(train_test_score = "test")
+if (!is.null(scoringData)) scoringData <- scoringData %>% mutate(train_test_score = "score")
+
+# Combine once; engineer once
+
+baseData <- bind_rows(train, test, scoringData) %>% clean_names()
+
+```
+
+
+```{r feature_engineering}
+#| warning: false
+
+# Likely categoricals -> character (we'll factor later)
+
+cat_vars <- c("bed_type","property_type","neighbourhood_group_cleansed","room_type",
+"cancellation_policy","host_is_superhost","instant_bookable","zipcode","city")
+for (v in intersect(cat_vars, names(baseData))) baseData[[v]] <- as.character(baseData[[v]])
+
+# 1) Beds imputation via accommodates (simple linear model)
+
+if (all(c("beds","accommodates") %in% names(baseData))) {
+fit_df <- baseData %>% filter(!is.na(beds), !is.na(accommodates))
+if (nrow(fit_df) > 10) {
+lm_beds <- lm(beds ~ accommodates, data = fit_df)
+baseData <- baseData %>%
+mutate(
+  beds = if_else(
+    is.na(beds) & !is.na(accommodates),
+    round(predict(lm_beds, newdata = pick(everything())), 0),
+    beds
+  )
+)
+
+}
+if (any(is.na(baseData$beds))) {
+baseData <- baseData %>% mutate(beds = if_else(is.na(beds), median(beds, na.rm = TRUE), beds))
+}
+}
+
+# 2) Zipcode impute to mode  ✅ FIXED
+if ("zipcode" %in% names(baseData)) {
+  zip_mode <- baseData %>%
+    dplyr::filter(!is.na(zipcode)) %>%
+    dplyr::count(zipcode, sort = TRUE) %>%
+    dplyr::slice_head(n = 1) %>%        # <= avoids the xgboost::slice conflict
+    dplyr::pull(zipcode)
+
+  baseData <- baseData %>% dplyr::mutate(zipcode = tidyr::replace_na(zipcode, zip_mode))
+}
+
+
+# 3) Amenities count
+
+if (all(c("id","amenities") %in% names(baseData))) {
+amen_counts <- baseData %>%
+select(id, amenities) %>%
+mutate(amenities = replace_na(amenities, "")) %>%
+tidyr::separate_rows(amenities, sep = ",") %>%
+mutate(amenities = stringr::str_trim(amenities)) %>%
+filter(amenities != "") %>%
+count(id, name = "count_amenities")
+baseData <- baseData %>%
+left_join(amen_counts, by = "id") %>%
+mutate(count_amenities = replace_na(count_amenities, 0L))
+}
+
+# 4) Normalized review score (0–5 from 0–100)
+
+baseData <- baseData %>% mutate(review_score_5 = if ("review_scores_rating" %in% names(.)) review_scores_rating/20 else NA_real_)
+
+# Re-split to keep row roles
+
+train <- baseData %>% filter(train_test_score == "train")
+test  <- baseData %>% filter(train_test_score == "test")
+score <- baseData %>% filter(train_test_score == "score") %>% { if (nrow(.) == 0) NULL else . }
+
+# Zipcode aggregates (TRAIN ONLY) to avoid leakage
+
+if (all(c("zipcode","price") %in% names(train))) {
+zip_aggs <- train %>%
+group_by(zipcode) %>%
+summarise(zip_price_median = median(price, na.rm = TRUE),
+zip_price_mean   = mean(price,   na.rm = TRUE),
+.groups = "drop")
+add_zip <- function(df) {
+out <- df %>% left_join(zip_aggs, by = "zipcode")
+out %>%
+mutate(zip_price_median = replace_na(zip_price_median, median(train$price, na.rm = TRUE)),
+zip_price_mean   = replace_na(zip_price_mean,   mean(train$price, na.rm = TRUE)))
+}
+train <- add_zip(train); test <- add_zip(test); if (!is.null(score)) score <- add_zip(score)
+}
+
+```
+## 3. Exploratory Data Analysis (EDA)
+Price distributions show heavy right skew, which motivates log-transformation during modeling. Room type and capacity also show clear price separation.
+
+```{r message=FALSE, warning=FALSE}
+p1 <- ggplot(train, aes(price)) +
+geom_histogram(bins = 50) +
+scale_x_continuous(labels = fmt_dollar) +
+labs(title = "Price distribution", x = "Price (USD)", y = "Count")
+
+p2 <- ggplot(train, aes(log1p(price))) +
+geom_histogram(bins = 50) +
+labs(title = "Log-price distribution", x = "log1p(Price)", y = "Count")
+
+p3 <- train %>%
+filter(!is.na(room_type)) %>%
+ggplot(aes(x = room_type, y = price)) +
+geom_boxplot(outlier.alpha = 0.2) +
+scale_y_continuous(labels = fmt_dollar) +
+labs(title = "Price by room type", x = "", y = "Price (USD)")
+
+p4 <- ggplot(train, aes(x = accommodates, y = price)) +
+geom_point(size = 0.9) +
+geom_smooth(se = FALSE) +
+scale_y_continuous(labels = fmt_dollar) +
+labs(title = "Price vs. accommodates", x = "Accommodates", y = "Price (USD)")
+
+(p1 | p2) / (p3 | p4)
+
+
+```
+## 4. Modeling
+
+Models are trained on **log(price)** to stabilize variance and penalize large errors.
+Categorical variables are one-hot encoded and numeric variables are median-imputed.
+
+Models trained:
+
+| Model | Library | Notes |
+|-------|---------|-------|
+| Random Forest | ranger | Non-linear, robust, interpretable feature importance |
+| Elastic Net | glmnet | Linear, with L1/L2 regularization |
+| XGBoost | xgboost | Gradient boosting, strong performance on tabular data |
+
+```{r modeling}
+# ---- Target on log scale ----
+
+train <- train %>% mutate(price_log = log1p(price))
+test  <- test  %>% mutate(price_log = log1p(price))
+
+# Predictors (keep those present)
+
+predictors <- c("host_is_superhost","beds","count_amenities","neighbourhood_group_cleansed","room_type",
+"accommodates","bathrooms","bedrooms","cancellation_policy","review_score_5",
+"number_of_reviews","property_type","instant_bookable",
+"zip_price_median","zip_price_mean","city","zipcode")
+predictors <- intersect(predictors, names(train))
+
+# Numeric vs categorical
+
+is_num <- vapply(train[, predictors, drop = FALSE], is.numeric, logical(1))
+num_vars <- names(is_num[is_num])
+cat_vars_model <- setdiff(predictors, num_vars)
+
+# Numeric: median-impute using TRAIN
+
+num_medians <- purrr::map_dbl(num_vars, ~ median(train[[.x]], na.rm = TRUE))
+for (v in num_vars) {
+if (anyNA(train[[v]])) train[[v]][is.na(train[[v]])] <- num_medians[[v]]
+if (anyNA(test[[v]]))  test[[v]][is.na(test[[v]])]  <- num_medians[[v]]
+}
+
+# Categorical: NA -> "Unknown"; rare (<1%) -> "Other" based on TRAIN
+
+pool_rare <- function(x_train, x_new = NULL, thresh = 0.01) {
+tx <- ifelse(is.na(x_train), "Unknown", as.character(x_train))
+props <- prop.table(table(tx))
+keep <- names(props[props >= thresh])
+map_levels <- function(z) {
+z <- ifelse(is.na(z), "Unknown", as.character(z))
+z[!(z %in% keep) & z != "Unknown"] <- "Other"
+factor(z, levels = unique(c(keep, "Other", "Unknown")))
+}
+list(train = map_levels(tx), new = if (!is.null(x_new)) map_levels(x_new) else NULL)
+}
+for (v in cat_vars_model) {
+res <- pool_rare(train[[v]], test[[v]], thresh = 0.01)
+train[[v]] <- res$train; test[[v]] <- res$new
+}
+for (v in cat_vars_model) {
+train[[v]] <- as.factor(train[[v]])
+test[[v]]  <- factor(test[[v]], levels = levels(train[[v]]))
+}
+
+# Model matrices (one-hot)
+
+df_train <- train %>% dplyr::select(all_of(c("price_log", predictors)))
+df_test  <- test  %>% dplyr::select(all_of(c("price_log", predictors)))
+
+X_train <- model.matrix(price_log ~ . - 1, data = df_train)
+X_test  <- model.matrix(price_log ~ . - 1, data = df_test)
+
+# Align columns
+
+missing_in_test <- setdiff(colnames(X_train), colnames(X_test))
+if (length(missing_in_test)) {
+X_test <- cbind(X_test, matrix(0, nrow = nrow(X_test), ncol = length(missing_in_test),
+dimnames = list(NULL, missing_in_test)))
+}
+extra_in_test <- setdiff(colnames(X_test), colnames(X_train))
+if (length(extra_in_test)) {
+X_test <- X_test[, setdiff(colnames(X_test), extra_in_test), drop = FALSE]
+}
+X_test <- X_test[, colnames(X_train), drop = FALSE]
+
+# Targets
+
+y_train <- df_train$price_log
+y_test  <- df_test$price_log
+
+# CV control (used only if you retrain later)
+
+cv_ctrl <- caret::trainControl(method = "repeatedcv", number = 5, repeats = 2, verboseIter = FALSE, allowParallel = TRUE)
+
+```
+
+```{r model-one}
+# ### ---------------- Random Forest (caret + ranger, saved model) ----------------
+# if (!dir.exists("models")) dir.create("models")
+# model_path_rf <- "models/rf_fit.rds"
+# 
+# if (file.exists(model_path_rf)) {
+#   message("Loading saved Random Forest model...")
+#   rf_fit <- readRDS(model_path_rf)
+# } else {
+#   message("Training Random Forest model (first time)...")
+#   
+#   p <- ncol(X_train)
+#   rf_grid <- expand.grid(
+#     mtry          = unique(pmax(2, floor(c(sqrt(p), sqrt(p)*1.5, sqrt(p)*2)))),
+#     splitrule     = c("variance", "extratrees"),
+#     min.node.size = c(3, 5, 10)
+#   )
+# 
+#   set.seed(5656)
+#   rf_fit <- caret::train(
+#     x = X_train,
+#     y = y_train,
+#     method      = "ranger",
+#     trControl   = cv_ctrl,
+#     tuneGrid    = rf_grid,
+#     num.trees   = 1000,
+#     importance  = "impurity",
+#     metric      = "RMSE"
+#   )
+#   
+#   saveRDS(rf_fit, model_path_rf)
+#   message("Saved Random Forest model to ", model_path_rf)
+# }
+# 
+# # ---- Evaluate on test set ----
+# rf_pred_log   <- predict(model_path_rf, newdata = X_test)
+# rf_pred_price <- pmax(expm1(rf_pred_log), 0)
+# 
+# # yardstick metrics if available; else caret::postResample
+# if (requireNamespace("yardstick", quietly = TRUE)) {
+#   rf_metrics <- tibble::tibble(price = expm1(y_test), .pred = rf_pred_price) |>
+#     yardstick::metrics(truth = price, estimate = .pred) |>
+#     dplyr::filter(.metric %in% c("rmse","rsq"))
+# } else {
+#   pm <- caret::postResample(pred = rf_pred_price, obs = expm1(y_test))
+#   rf_metrics <- data.frame(.metric = c("rmse","rsq"),
+#                            .estimate = c(unname(pm["RMSE"]), unname(pm["Rsquared"])))
+# }
+# rf_metrics
+
+```
+
+```{r model-two}
+# ### ---------------- Elastic Net (caret + glmnet, saved model) ----------------
+# if (!dir.exists("models")) dir.create("models")
+# model_path_en <- "models/en_fit.rds"
+# 
+# if (file.exists(model_path_en)) {
+#   message("Loading saved Elastic Net model...")
+#   en_fit <- readRDS(model_path_en)
+# } else {
+#   message("Training Elastic Net model (first time)...")
+#   
+#   # Tune across a broad but sensible grid
+#   en_grid <- expand.grid(
+#     alpha  = seq(0, 1, by = 0.25),                    # ridge (0) -> lasso (1)
+#     lambda = 10 ^ seq(2, -4, length.out = 50)         # regularization strength
+#   )
+#   
+#   set.seed(5656)
+#   en_fit <- caret::train(
+#     x = X_train,
+#     y = y_train,
+#     method      = "glmnet",
+#     trControl   = cv_ctrl,        # 5x2 repeated CV from your prep
+#     tuneGrid    = en_grid,
+#     standardize = TRUE            # glmnet standardization (recommended)
+#     # preProcess = c("center","scale")  # optional, but glmnet standardizes internally
+#   )
+#   
+#   saveRDS(en_fit, model_path_en)
+#   message("Saved Elastic Net model to ", model_path_en)
+# }
+# 
+# # ---- Evaluate on test set ----
+# en_pred_log   <- predict(en_fit, newdata = X_test)
+# en_pred_price <- pmax(expm1(en_pred_log), 0)
+# 
+# # yardstick metrics if available; else caret::postResample
+# if (requireNamespace("yardstick", quietly = TRUE)) {
+#   en_metrics <- tibble::tibble(price = expm1(y_test), .pred = en_pred_price) |>
+#     yardstick::metrics(truth = price, estimate = .pred) |>
+#     dplyr::filter(.metric %in% c("rmse","rsq"))
+# } else {
+#   pm <- caret::postResample(pred = en_pred_price, obs = expm1(y_test))
+#   en_metrics <- data.frame(.metric = c("rmse","rsq"),
+#                            .estimate = c(unname(pm["RMSE"]), unname(pm["Rsquared"])))
+# }
+# en_metrics
+
+# ---- (Optional) Top coefficients for portfolio plot ----
+# Extract coefficients at best alpha/lambda
+# best_a <- en_fit$bestTune$alpha
+# best_l <- en_fit$bestTune$lambda
+# coefs  <- as.matrix(coef(en_fit$finalModel, s = best_l))
+# coef_tbl <- tibble::tibble(
+#   term = rownames(coefs),
+#   estimate = as.numeric(coefs)
+# ) |>
+#   dplyr::filter(term != "(Intercept)") |>
+#   dplyr::arrange(dplyr::desc(abs(estimate)))
+# 
+
+
+```
+
+
+```{r model-three}
+
+# ### ---------------- XGBoost (caret + xgboost, saved model) ----------------
+# if (!dir.exists("models")) dir.create("models")
+# model_path_xgb <- "models/xgb_fit.rds"
+# 
+# if (file.exists(model_path_xgb)) {
+#   message("Loading saved XGBoost model...")
+#   xgb_fit <- readRDS(model_path_xgb)
+# } else {
+#   message("Training XGBoost model (first time)...")
+#   
+#   # caret::xgbTree tuning grid (balanced for speed/quality)
+#   xgb_grid <- expand.grid(
+#     nrounds = c(400, 800, 1200),     # boosting iterations
+#     max_depth = c(4, 6, 8),          # tree depth
+#     eta = c(0.03, 0.1),              # learning rate
+#     gamma = c(0, 1),                 # minimum loss reduction
+#     colsample_bytree = c(0.6, 0.8),  # column subsample
+#     min_child_weight = c(1, 3),      # min sum hessian in child
+#     subsample = c(0.7, 1.0)          # row subsample
+#   )
+# 
+#   set.seed(5656)
+#   xgb_fit <- caret::train(
+#     x = X_train,
+#     y = y_train,
+#     method    = "xgbTree",
+#     trControl = cv_ctrl,        # your 5x2 repeated CV
+#     tuneGrid  = xgb_grid,
+#     metric    = "RMSE",
+#     verbose   = FALSE
+#   )
+#   
+#   saveRDS(xgb_fit, model_path_xgb)
+#   message("Saved XGBoost model to ", model_path_xgb)
+# }
+# 
+# # ---- Evaluate on test set ---- 
+# xgb_pred_log   <- predict(xgb_fit, newdata = X_test)
+# xgb_pred_price <- pmax(expm1(xgb_pred_log), 0)
+# 
+# # yardstick if available; else use caret::postResample
+# if (requireNamespace("yardstick", quietly = TRUE)) {
+#   xgb_metrics <- tibble::tibble(price = expm1(y_test), .pred = xgb_pred_price) |>
+#     yardstick::metrics(truth = price, estimate = .pred) |>
+#     dplyr::filter(.metric %in% c("rmse","rsq"))
+# } else {
+#   pm <- caret::postResample(pred = xgb_pred_price, obs = expm1(y_test))
+#   xgb_metrics <- data.frame(.metric = c("rmse","rsq"),
+#                             .estimate = c(unname(pm["RMSE"]), unname(pm["Rsquared"])))
+# }
+# xgb_metrics
+# 
+# # ---- (Optional) Feature importance (top 20) ----
+# # Uses the underlying xgboost booster inside the caret model
+# if (requireNamespace("xgboost", quietly = TRUE)) {
+#   imp <- xgboost::xgb.importance(feature_names = colnames(X_train),
+#                                  model = xgb_fit$finalModel)
+# }
+
+```
+
+
+```{r load-saved-models, message=FALSE}
+# ---- Load saved models from models/ ----
+
+model_path_rf  <- "models/rf_fit.rds"
+model_path_en  <- "models/en_fit.rds"
+model_path_xgb <- "models/xgb_fit.rds"
+
+rf_fit  <- if (file.exists(model_path_rf))  readRDS(model_path_rf)  else NULL
+en_fit  <- if (file.exists(model_path_en))  readRDS(model_path_en)  else NULL
+xgb_fit <- if (file.exists(model_path_xgb)) readRDS(model_path_xgb) else NULL
+
+# Helpers
+
+bt <- function(x) pmax(expm1(x), 0)  # back-transform from log1p
+eval_model <- function(fit, X_new, y_true_log) {
+stopifnot(!is.null(fit))
+pred_log <- predict(fit, newdata = X_new)
+pred     <- bt(as.numeric(pred_log))
+obs      <- bt(as.numeric(y_true_log))
+preds_df <- tibble::tibble(price = obs, .pred = pred, resid = obs - pred)
+
+if (requireNamespace("yardstick", quietly = TRUE)) {
+mets <- preds_df |>
+yardstick::metrics(truth = price, estimate = .pred) |>
+dplyr::filter(.metric %in% c("rmse","rsq"))
+} else {
+pm <- caret::postResample(pred = preds_df$.pred, obs = preds_df$price)
+mets <- tibble::tibble(.metric = c("rmse","rsq"),
+.estimate = c(unname(pm["RMSE"]), unname(pm["Rsquared"])))
+}
+list(preds = preds_df, metrics = mets)
+}
+
+
+```
+
+
+
+
+## 5. Model Comparison & Selection
+
+```{r compare-models, message=FALSE}
+
+
+bt <- function(x) pmax(expm1(x), 0)
+
+# Align a data.frame version of X to the model's required predictor names
+align_newdata <- function(fit, X) {
+  df <- as.data.frame(X)
+  # Try to get the predictor names the model expects
+  req <- NULL
+  # ranger via caret
+  if (!is.null(fit$finalModel) && inherits(fit$finalModel, "ranger")) {
+    req <- try(fit$finalModel$forest$independent.variable.names, silent = TRUE)
+  }
+  # generic caret fallback (uses trainingData columns, minus .outcome)
+  if (is.null(req) || inherits(req, "try-error")) {
+    if (!is.null(fit$trainingData)) {
+      req <- setdiff(colnames(fit$trainingData), ".outcome")
+    }
+  }
+  # Final fallback: just use colnames(X) (shouldn't happen, but keeps robustness)
+  if (is.null(req)) req <- colnames(df)
+
+  # Add missing as zeros, drop extras, order to req
+  miss <- setdiff(req, colnames(df))
+  if (length(miss)) for (m in miss) df[[m]] <- 0
+  extra <- setdiff(colnames(df), req)
+  if (length(extra)) df <- df[, setdiff(colnames(df), extra), drop = FALSE]
+  df[, req, drop = FALSE]
+}
+
+# Robust evaluator: try aligned X first; then raw test df as fallback
+eval_model <- function(fit, X_test, y_test, test_df) {
+  pred_log <- NULL
+
+  nd <- try(align_newdata(fit, X_test), silent = TRUE)
+  if (!inherits(nd, "try-error")) {
+    pred_log <- try(predict(fit, newdata = nd), silent = TRUE)
+  }
+  if (inherits(pred_log, "try-error") || is.null(pred_log)) {
+    pred_log <- try(predict(fit, newdata = test_df), silent = TRUE)
+  }
+  if (inherits(pred_log, "try-error") || is.null(pred_log)) return(NULL)
+
+  preds <- tibble::tibble(price = expm1(y_test), .pred = bt(pred_log))
+  list(
+    preds   = preds,
+    metrics = preds |>
+      yardstick::metrics(truth = price, estimate = .pred) |>
+      dplyr::filter(.metric %in% c("rmse","rsq"))
+  )
+}
+
+# ---- Evaluate whatever models are available ----
+results <- list()
+if (exists("rf_fit")  && !is.null(rf_fit))  results$RF  <- eval_model(rf_fit,  X_test, y_test, test)
+if (exists("en_fit")  && !is.null(en_fit))  results$EN  <- eval_model(en_fit,  X_test, y_test, test)
+if (exists("xgb_fit") && !is.null(xgb_fit)) results$XGB <- eval_model(xgb_fit, X_test, y_test, test)
+
+# Keep only successful evaluations
+results <- purrr::compact(results)
+stopifnot(length(results) > 0)
+
+# ---- Build comparison table ----
+metrics_tbl <- purrr::imap_dfr(results, ~ .x$metrics %>% dplyr::mutate(model = .y)) %>%
+  dplyr::select(model, .metric, .estimate) %>%
+  dplyr::mutate(.metric = tolower(.metric)) %>%
+  tidyr::pivot_wider(names_from = .metric, values_from = .estimate) %>%
+  dplyr::mutate(
+    rmse = as.numeric(rmse),
+    rsq  = as.numeric(rsq)
+  ) %>%
+  dplyr::arrange(rmse)
+
+# Optional pretty table
+metrics_tbl %>%
+  gt::gt() %>%
+  gt::tab_header(title = "Model Performance on Test Set") %>%
+  gt::cols_label(rmse = "RMSE ($)", rsq = "R²") %>%
+  gt::tab_style(style = gt::cell_text(weight = "bold"),
+                locations = gt::cells_column_labels())
+
+# ---- Pick best & prep for visuals ----
+best_name <- metrics_tbl$model[1]
+best_preds <- results[[best_name]]$preds %>%
+  dplyr::transmute(price, pred = .pred, resid = price - .pred)
+
+message(sprintf("✅ Best model: %s — RMSE $%.1f | R² %.3f",
+                best_name, metrics_tbl$rmse[1], metrics_tbl$rsq[1]))
+
+best_name <- as.character(metrics_tbl$model[1])
+
+# Map the winning label -> actual model object
+best_fit <- switch(best_name,
+  RF  = rf_fit,
+  EN  = en_fit,
+  XGB = xgb_fit
+)
+stopifnot(!is.null(best_fit))
+
+```
+The table shows performance on the held-out test set.  
+Lower RMSE = better. Higher R² = better.
+
+
+The best-performing model is **`r best_name`**, with:
+
+- **RMSE:** `r scales::dollar(round(metrics_tbl$rmse[1],1))`
+- **R²:** `r round(metrics_tbl$rsq[1], 3)`
+
+This model is used for all diagnostics and predictions.
+
+---
+
+## 6. Model Diagnostics
+Interpretation of Diagnostic Plots
+
+Predicted vs Actual:
+The XGBoost model closely tracks the 45° reference line, indicating good predictive accuracy. Most points cluster in the lower–mid price range, with some under-prediction at higher prices — a common pattern when extreme nightly rates are rare in the training data.
+
+Residuals vs Predicted:
+Residuals are centered around zero with no strong patterns, suggesting the model is not systematically over- or under-predicting across most price ranges. A few large positive and negative residuals indicate outliers (listings with unusually high or low prices).
+
+Residuals Q–Q Plot:
+The residual distribution deviates from perfect normality in the tails — again driven by extreme listings — but the majority fall near the reference line, supporting that model errors are approximately symmetric and well-behaved.
+
+Overall, the diagnostics show that the XGBoost model generalizes well, captures the main pricing structure in the data, and only struggles on a small number of extreme cases (luxury or atypical listings).
+```{r diagnostics, fig.width=11, fig.height=7}
+
+# --- prerequisites ---
+if (!exists("metrics_tbl")) stop("metrics_tbl not found.")
+if (!exists("results"))     stop("results not found.")
+if (!requireNamespace("hexbin", quietly = TRUE)) install.packages("hexbin")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+library(patchwork)
+
+# pick best model (lowercase metric names)
+best_row  <- metrics_tbl %>% dplyr::slice_min(rmse, n = 1)
+best_name <- as.character(best_row$model)
+
+# (re)build best_preds if needed
+if (!exists("best_preds") || is.null(best_preds)) {
+  if (!is.null(results[[best_name]]) && !is.null(results[[best_name]]$preds)) {
+    best_preds <- results[[best_name]]$preds %>%
+      dplyr::transmute(price, pred = .pred, resid = price - .pred)
+  } else {
+    if (!exists("bt")) bt <- function(x) pmax(expm1(x), 0)
+    pred_log <- predict(switch(best_name, RF=rf_fit, EN=en_fit, XGB=xgb_fit), newdata = X_test)
+    best_preds <- tibble::tibble(
+      price = bt(as.numeric(y_test)),
+      pred  = bt(as.numeric(pred_log))
+    ) %>% dplyr::mutate(resid = price - pred)
+  }
+}
+
+# helpers
+if (!exists("fmt_dollar")) fmt_dollar <- scales::label_dollar(accuracy = 1, prefix = "$", big.mark = ",")
+
+# set symmetric residual limits (trim extreme outliers for readability)
+r_lim <- stats::quantile(abs(best_preds$resid), 0.99, na.rm = TRUE) |> as.numeric()
+
+# --- Plot A: Predicted vs Actual (bigger at top) ---
+pA <- ggplot(best_preds, aes(x = price, y = pred)) +
+  geom_hex(bins = 35, show.legend = TRUE) +
+  scale_fill_viridis_c(name = "Count") +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, linewidth = 0.7) +
+  coord_equal() +
+  scale_x_continuous(labels = fmt_dollar, breaks = scales::breaks_pretty(6)) +
+  scale_y_continuous(labels = fmt_dollar, breaks = scales::breaks_pretty(6)) +
+  labs(title = sprintf("%s — Predicted vs Actual", best_name),
+       x = "Actual price", y = "Predicted price") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    legend.position = "right"
+  )
+
+# --- Plot B: Residuals vs Predicted ---
+pB <- ggplot(best_preds, aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.25, size = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 0.9) +
+  geom_hline(yintercept = 0, linetype = 2, linewidth = 0.6) +
+  scale_x_continuous(labels = fmt_dollar, breaks = scales::breaks_pretty(5)) +
+  scale_y_continuous(limits = c(-r_lim, r_lim)) +
+  labs(title = "Residuals vs Predicted",
+       x = "Predicted price", y = "Residual") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+
+# --- Plot C: Residuals Q–Q Plot ---
+pC <- ggplot(best_preds, aes(sample = resid)) +
+  stat_qq(alpha = 0.5, size = 1) +
+  stat_qq_line(color = "red", linewidth = 0.8) +
+  labs(title = "Residuals — Q–Q Plot",
+       x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+# Add subtle margins so labels never collide with the panel edge
+pA <- pA + theme(plot.margin = margin(6, 12, 6, 6))
+pB <- pB + theme(plot.margin = margin(6, 12, 6, 6))
+pC <- pC + theme(plot.margin = margin(6, 6, 6, 12))
+
+# Build a spacer to force separation
+sp <- patchwork::plot_spacer()
+
+# Bottom row with a spacer column in the middle
+bottom_row <- (pB | sp | pC) + patchwork::plot_layout(widths = c(1, 0.08, 1))
+
+# Final layout: large top, separated bottoms
+final_diag <- (pA) / bottom_row +
+  patchwork::plot_layout(heights = c(1.35, 1), guides = "collect") &
+  theme(legend.position = "right")
+
+final_diag
+
+
+```
+
+
+
+## 7. Feature Importance
+
+```{r importance-or-coefs, fig.width=7, fig.height=4}
+# Ensure best_fit exists even if this chunk is run alone
+if (!exists("best_fit") || is.null(best_fit)) {
+  best_fit <- switch(best_name, RF = rf_fit, EN = en_fit, XGB = xgb_fit)
+  stopifnot(!is.null(best_fit))
+}
+
+if (best_name == "RF") {
+
+# caret::varImp works on the trained ranger model wrapped by caret
+
+vi <- caret::varImp(best_fit)$importance %>%
+tibble::rownames_to_column("feature") %>%
+dplyr::arrange(dplyr::desc(Overall)) %>%
+dplyr::slice(1:20)
+ggplot(vi, aes(x = reorder(feature, Overall), y = Overall)) +
+geom_col(fill = "#4E79A7") + coord_flip() +
+labs(title = "Top 20 Features — Random Forest", x = "", y = "Importance")
+
+} else if (best_name == "XGB") {
+
+# Use underlying xgboost booster inside caret model
+
+if (requireNamespace("xgboost", quietly = TRUE)) {
+imp <- xgboost::xgb.importance(
+feature_names = colnames(X_train),
+model = best_fit$finalModel
+)
+imp <- imp %>% dplyr::slice(1:20)
+ggplot(imp, aes(x = reorder(Feature, Gain), y = Gain)) +
+geom_col(fill = "#E67E22") + coord_flip() +
+labs(title = "Top 20 Features — XGBoost", x = "", y = "Gain")
+}
+} else if (best_name == "EN") {
+
+# Coefficients from glmnet at best lambda
+
+best_l <- best_fit$bestTune$lambda
+cf <- as.matrix(coef(best_fit$finalModel, s = best_l))
+en_coefs <- tibble::tibble(term = rownames(cf), estimate = as.numeric(cf)) %>%
+dplyr::filter(term != "(Intercept)") %>%
+dplyr::arrange(dplyr::desc(abs(estimate))) %>%
+dplyr::slice(1:20)
+ggplot(en_coefs, aes(x = reorder(term, estimate), y = estimate)) +
+geom_col(fill = "#2E86C1") + coord_flip() +
+labs(title = "Top 20 Elastic Net Coefficients", x = "", y = "Coefficient (log-price scale)")
+}
+
+```
+
+::: callout-note
+**Model-specific interpretation notes**
+
+- **XGBoost “Gain”**
+  - Gain tells us how important a feature is by measuring how much it helps the model reduce prediction error.
+  - Higher gain = the feature contributed more to improving accuracy.
+
+- **Elastic Net coefficients**
+  - Coefficients are learned on the log-price scale, which means they translate to percentage changes in price.
+  - To interpret a coefficient: convert using `exp(coef) - 1`.
+  - Example: a coefficient of **+0.07** ≈ **+7.25%** higher price, because `exp(0.07) - 1 ≈ 0.0725`.
+:::
+
+
+
+## 8. Conclusion
+
+This project successfully built and compared three machine learning models to predict nightly Airbnb prices in New York City.  
+After evaluating performance on a held-out test set, **XGBoost** achieved the best results, with the lowest RMSE and highest R², indicating strong predictive accuracy and generalization.
+
+Key takeaways:
+
+- Prices are strongly driven by room type, accommodates capacity, amenities, and neighborhood-level pricing.
+- The model performs well across the majority of listings, with only a small number of outlier properties showing large residuals (typically luxury or highly atypical units).
+- Diagnostics confirm that model errors are centered around zero and mostly symmetric, suggesting a stable and unbiased fit.
+- Feature importance aligns with intuition: higher capacity, prime neighborhoods, and better amenities are associated with higher nightly rates.
+
+### What could improve future performance?
+
+- Include calendar/seasonality features (weekends, holidays, peak tourism months)
+- Incorporate host reputation (e.g., number of past stays, cancellation rates, response time)
+- Fit a model that accounts for geographic distance to landmarks (Times Square, major subway hubs)
+- Try advanced boosting approaches (LightGBM, CatBoost) or stacking models
+- Model price as a **two-step process**:  
+  1) Predict if a listing is luxury / high-tier  
+  2) Predict price within each tier
+
+### Final note:
+
+The XGBoost model can now be applied to **new, unseen listings** to provide estimated nightly prices, making it useful for hosts, investors, and platforms evaluating pricing strategies.
+
+
+
+
