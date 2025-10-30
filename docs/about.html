@@ -148,14 +148,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#load-libraries-set-global-options" id="toc-load-libraries-set-global-options" class="nav-link" data-scroll-target="#load-libraries-set-global-options">1. Load Libraries &amp; Set global options</a></li>
   <li><a href="#data-cleaning-feature-engineering" id="toc-data-cleaning-feature-engineering" class="nav-link" data-scroll-target="#data-cleaning-feature-engineering">2. Data Cleaning &amp; Feature Engineering</a></li>
   <li><a href="#exploratory-data-analysis-eda" id="toc-exploratory-data-analysis-eda" class="nav-link" data-scroll-target="#exploratory-data-analysis-eda">3. Exploratory Data Analysis (EDA)</a></li>
-  <li><a href="#modeling" id="toc-modeling" class="nav-link" data-scroll-target="#modeling">4. Modeling</a></li>
+  <li><a href="#modeling" id="toc-modeling" class="nav-link" data-scroll-target="#modeling">4. Modeling</a>
+  <ul class="collapse">
+  <li><a href="#random-forest" id="toc-random-forest" class="nav-link" data-scroll-target="#random-forest">Random Forest</a></li>
+  <li><a href="#elastic-net" id="toc-elastic-net" class="nav-link" data-scroll-target="#elastic-net">Elastic Net</a></li>
+  <li><a href="#xgboost" id="toc-xgboost" class="nav-link" data-scroll-target="#xgboost">XGBoost</a></li>
+  </ul></li>
   <li><a href="#model-comparison-selection" id="toc-model-comparison-selection" class="nav-link" data-scroll-target="#model-comparison-selection">5. Model Comparison &amp; Selection</a></li>
   <li><a href="#model-diagnostics" id="toc-model-diagnostics" class="nav-link" data-scroll-target="#model-diagnostics">6. Model Diagnostics</a></li>
   <li><a href="#feature-importance" id="toc-feature-importance" class="nav-link" data-scroll-target="#feature-importance">7. Feature Importance</a></li>
+  <li><a href="#predicting-on-new-unseen-data" id="toc-predicting-on-new-unseen-data" class="nav-link" data-scroll-target="#predicting-on-new-unseen-data">8. Predicting on New (Unseen) Data</a></li>
   <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">8. Conclusion</a>
   <ul class="collapse">
-  <li><a href="#what-could-improve-future-performance" id="toc-what-could-improve-future-performance" class="nav-link" data-scroll-target="#what-could-improve-future-performance">What could improve future performance?</a></li>
-  <li><a href="#final-note" id="toc-final-note" class="nav-link" data-scroll-target="#final-note">Final note:</a></li>
+  <li><a href="#scoring-new-data" id="toc-scoring-new-data" class="nav-link" data-scroll-target="#scoring-new-data">Scoring New Data</a></li>
+  <li><a href="#potential-next-improvements" id="toc-potential-next-improvements" class="nav-link" data-scroll-target="#potential-next-improvements">Potential Next Improvements</a></li>
+  <li><a href="#final-note" id="toc-final-note" class="nav-link" data-scroll-target="#final-note">Final Note</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -187,14 +194,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="overview">Overview</h2>
 <p>This project predicts nightly Airbnb rental prices in New York City using machine learning.<br>
 The workflow includes:</p>
-<p>✅ <strong>Data loading &amp; preprocessing</strong><br>
-✅ <strong>Feature engineering</strong> (amenity extraction, zipcode aggregates, imputation)<br>
-✅ <strong>Modeling using three algorithms:</strong> - Random Forest<br>
-- Elastic Net<br>
-- XGBoost<br>
-✅ <strong>Model evaluation</strong><br>
-✅ <strong>Model selection</strong><br>
-✅ <strong>Diagnostic visualizations</strong></p>
+<ol type="1">
+<li><strong>Data loading &amp; preprocessing</strong><br>
+</li>
+<li><strong>Feature engineering</strong> (amenity extraction, zipcode aggregates, imputation)<br>
+</li>
+<li><strong>Modeling using three algorithms:</strong>
+<ul>
+<li>Random Forest<br>
+</li>
+<li>Elastic Net<br>
+</li>
+<li>XGBoost<br>
+</li>
+</ul></li>
+<li><strong>Model evaluation</strong><br>
+</li>
+<li><strong>Model selection</strong><br>
+</li>
+<li><strong>Diagnostic visualizations</strong></li>
+</ol>
 <p>The final model can be used to generate price predictions for new, unseen listings.</p>
 </section>
 <section id="load-libraries-set-global-options" class="level2">
@@ -253,141 +272,167 @@ The workflow includes:</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>analysisData <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  readr<span class="sc">::</span><span class="fu">read_csv</span>(</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"data/analysis_data.csv"</span>,</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">col_types =</span> <span class="fu">cols</span>(</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>      <span class="at">id =</span> <span class="fu">col_integer</span>(),</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      <span class="at">price =</span> <span class="fu">col_double</span>(),</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">beds =</span> <span class="fu">col_double</span>(),</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>      <span class="at">bedrooms =</span> <span class="fu">col_double</span>(),</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>      <span class="at">bathrooms =</span> <span class="fu">col_double</span>(),</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">accommodates =</span> <span class="fu">col_integer</span>(),</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>      <span class="at">review_scores_rating =</span> <span class="fu">col_double</span>(),</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>      <span class="at">number_of_reviews =</span> <span class="fu">col_integer</span>(),</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>      <span class="at">property_type =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>      <span class="at">bed_type =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">neighbourhood_group_cleansed =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">room_type =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">cancellation_policy =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>      <span class="at">host_is_superhost =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>      <span class="at">instant_bookable  =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>      <span class="at">zipcode =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>      <span class="at">city =</span> <span class="fu">col_character</span>(),</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>      <span class="at">amenities =</span> <span class="fu">col_character</span>()</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>scoring_exists <span class="ot">&lt;-</span> <span class="fu">file.exists</span>(<span class="st">"scoringData.csv"</span>)</span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>scoringData <span class="ot">&lt;-</span> <span class="cf">if</span> (scoring_exists) readr<span class="sc">::</span><span class="fu">read_csv</span>(<span class="st">"scoringData.csv"</span>, <span class="at">show_col_types =</span> <span class="cn">FALSE</span>) <span class="cf">else</span> <span class="cn">NULL</span></span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Ensure common types BEFORE combining (zipcode as character)</span></span>
-<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="st">"zipcode"</span> <span class="sc">%in%</span> <span class="fu">names</span>(analysisData)) analysisData <span class="ot">&lt;-</span> analysisData <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">zipcode =</span> <span class="fu">as.character</span>(zipcode))</span>
-<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(scoringData) <span class="sc">&amp;&amp;</span> <span class="st">"zipcode"</span> <span class="sc">%in%</span> <span class="fu">names</span>(scoringData)) scoringData <span class="ot">&lt;-</span> scoringData <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">zipcode =</span> <span class="fu">as.character</span>(zipcode))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>analysisData <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>( </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  readr<span class="sc">::</span><span class="fu">read_csv</span>( </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"data/AnalysisData.csv"</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">na =</span> <span class="fu">c</span>(<span class="st">""</span>, <span class="st">"NA"</span>, <span class="st">"N/A"</span>),</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">col_types =</span> <span class="fu">cols</span>( </span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      <span class="at">id =</span> <span class="fu">col_integer</span>(),</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">price =</span> <span class="fu">col_double</span>(), </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>      <span class="at">beds =</span> <span class="fu">col_double</span>(), </span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>      <span class="at">bedrooms =</span> <span class="fu">col_double</span>(), </span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">bathrooms =</span> <span class="fu">col_double</span>(), </span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>      <span class="at">accommodates =</span> <span class="fu">col_integer</span>(), </span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>      <span class="at">review_scores_rating =</span> <span class="fu">col_double</span>(), </span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>      <span class="at">number_of_reviews =</span> <span class="fu">col_integer</span>(), </span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>      <span class="at">property_type =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">bed_type =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">neighbourhood_group_cleansed =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">room_type =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>      <span class="at">cancellation_policy =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>      <span class="at">host_is_superhost =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>      <span class="at">instant_bookable =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>      <span class="at">zipcode =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>      <span class="at">city =</span> <span class="fu">col_character</span>(), </span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>      <span class="at">amenities =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>      <span class="at">license =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>      <span class="at">jurisdiction_names =</span> <span class="fu">col_character</span>()</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>                                     ) </span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>  ) </span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>scoringData <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>  readr<span class="sc">::</span><span class="fu">read_csv</span>(</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="st">"data/scoringData.csv"</span>,</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>    <span class="at">na =</span> <span class="fu">c</span>(<span class="st">""</span>, <span class="st">"NA"</span>, <span class="st">"N/A"</span>),</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>    <span class="at">col_types =</span> <span class="fu">cols</span>(</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>      <span class="at">id =</span> <span class="fu">col_integer</span>(),</span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>      <span class="at">beds =</span> <span class="fu">col_double</span>(),</span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>      <span class="at">bedrooms =</span> <span class="fu">col_double</span>(),</span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>      <span class="at">bathrooms =</span> <span class="fu">col_double</span>(),</span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>      <span class="at">accommodates =</span> <span class="fu">col_integer</span>(),</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>      <span class="at">review_scores_rating =</span> <span class="fu">col_double</span>(),</span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>      <span class="at">number_of_reviews =</span> <span class="fu">col_integer</span>(),</span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>      <span class="at">property_type =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>      <span class="at">bed_type =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>      <span class="at">neighbourhood_group_cleansed =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>      <span class="at">room_type =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>      <span class="at">cancellation_policy =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a>      <span class="at">host_is_superhost =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>      <span class="at">instant_bookable =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>      <span class="at">zipcode =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>      <span class="at">city =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>      <span class="at">amenities =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a>      <span class="at">license =</span> <span class="fu">col_character</span>(),</span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a>      <span class="at">jurisdiction_names =</span> <span class="fu">col_character</span>()</span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-58"><a href="#cb2-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-59"><a href="#cb2-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-60"><a href="#cb2-60" aria-hidden="true" tabindex="-1"></a><span class="co"># checking the col names for those cols and made the characters. </span></span>
+<span id="cb2-61"><a href="#cb2-61" aria-hidden="true" tabindex="-1"></a><span class="co"># 32 = zipcode, 80 = license and 81 = jurisdiction_names</span></span>
+<span id="cb2-62"><a href="#cb2-62" aria-hidden="true" tabindex="-1"></a><span class="co"># colnames(analysisData_raw) %&gt;% tibble::enframe(name = "col_number", value = "name")</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 70/30 split stratified by price</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>split_obj <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">initial_split</span>(analysisData, <span class="at">prop =</span> <span class="fl">0.70</span>, <span class="at">strata =</span> price)</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">training</span>(split_obj)  <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"train"</span>)</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>test  <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">testing</span>(split_obj)   <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"test"</span>)</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(scoringData)) scoringData <span class="ot">&lt;-</span> scoringData <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"score"</span>)</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine once; engineer once</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(train, test, scoringData) <span class="sc">%&gt;%</span> <span class="fu">clean_names</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>split_obj <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">initial_split</span>(analysisData, <span class="at">prop =</span> <span class="fl">0.70</span>, <span class="at">strata =</span> price)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">training</span>(split_obj)  <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"train"</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>test  <span class="ot">&lt;-</span> rsample<span class="sc">::</span><span class="fu">testing</span>(split_obj)   <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"test"</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(scoringData)) scoringData <span class="ot">&lt;-</span> scoringData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">train_test_score =</span> <span class="st">"score"</span>)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine once; engineer once</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(train, test, scoringData) <span class="sc">%&gt;%</span> janitor<span class="sc">::</span><span class="fu">clean_names</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Likely categoricals -&gt; character (we'll factor later)</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>cat_vars <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"bed_type"</span>,<span class="st">"property_type"</span>,<span class="st">"neighbourhood_group_cleansed"</span>,<span class="st">"room_type"</span>,</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="st">"cancellation_policy"</span>,<span class="st">"host_is_superhost"</span>,<span class="st">"instant_bookable"</span>,<span class="st">"zipcode"</span>,<span class="st">"city"</span>)</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (v <span class="cf">in</span> <span class="fu">intersect</span>(cat_vars, <span class="fu">names</span>(baseData))) baseData[[v]] <span class="ot">&lt;-</span> <span class="fu">as.character</span>(baseData[[v]])</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 1) Beds imputation via accommodates (simple linear model)</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>cat_vars <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">"bed_type"</span>,<span class="st">"property_type"</span>,<span class="st">"neighbourhood_group_cleansed"</span>,<span class="st">"room_type"</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">"cancellation_policy"</span>,<span class="st">"host_is_superhost"</span>,<span class="st">"instant_bookable"</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">"zipcode"</span>,<span class="st">"city"</span>,<span class="st">"license"</span>,<span class="st">"jurisdiction_names"</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (v <span class="cf">in</span> <span class="fu">intersect</span>(cat_vars, <span class="fu">names</span>(baseData))) baseData[[v]] <span class="ot">&lt;-</span> <span class="fu">as.character</span>(baseData[[v]])</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"beds"</span>,<span class="st">"accommodates"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(baseData))) {</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>fit_df <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(beds), <span class="sc">!</span><span class="fu">is.na</span>(accommodates))</span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">nrow</span>(fit_df) <span class="sc">&gt;</span> <span class="dv">10</span>) {</span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>lm_beds <span class="ot">&lt;-</span> <span class="fu">lm</span>(beds <span class="sc">~</span> accommodates, <span class="at">data =</span> fit_df)</span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="fu">mutate</span>(</span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">beds =</span> <span class="fu">if_else</span>(</span>
-<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">is.na</span>(beds) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(accommodates),</span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">round</span>(<span class="fu">predict</span>(lm_beds, <span class="at">newdata =</span> <span class="fu">pick</span>(<span class="fu">everything</span>())), <span class="dv">0</span>),</span>
-<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    beds</span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">any</span>(<span class="fu">is.na</span>(baseData<span class="sc">$</span>beds))) {</span>
-<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">beds =</span> <span class="fu">if_else</span>(<span class="fu">is.na</span>(beds), <span class="fu">median</span>(beds, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), beds))</span>
-<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 1) Beds imputation via accommodates (simple linear model)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"beds"</span>,<span class="st">"accommodates"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(baseData))) {</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  fit_df <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(beds), <span class="sc">!</span><span class="fu">is.na</span>(accommodates))</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(fit_df) <span class="sc">&gt;</span> <span class="dv">10</span>) {</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    lm_beds <span class="ot">&lt;-</span> <span class="fu">lm</span>(beds <span class="sc">~</span> accommodates, <span class="at">data =</span> fit_df)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>      dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        <span class="at">beds =</span> dplyr<span class="sc">::</span><span class="fu">if_else</span>(</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>          <span class="fu">is.na</span>(beds) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(accommodates),</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>          <span class="fu">round</span>(<span class="fu">predict</span>(lm_beds, <span class="at">newdata =</span> dplyr<span class="sc">::</span><span class="fu">pick</span>(<span class="fu">everything</span>())), <span class="dv">0</span>),</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>          beds</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">any</span>(<span class="fu">is.na</span>(baseData<span class="sc">$</span>beds))) {</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>    baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">beds =</span> dplyr<span class="sc">::</span><span class="fu">if_else</span>(<span class="fu">is.na</span>(beds), stats<span class="sc">::</span><span class="fu">median</span>(beds, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), beds))</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>  }</span>
 <span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="co"># 2) Zipcode impute to mode  ✅ FIXED</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="co"># 2) Zipcode impute to mode</span></span>
 <span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="st">"zipcode"</span> <span class="sc">%in%</span> <span class="fu">names</span>(baseData)) {</span>
 <span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>  zip_mode <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
 <span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(zipcode)) <span class="sc">%&gt;%</span></span>
 <span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">count</span>(zipcode, <span class="at">sort =</span> <span class="cn">TRUE</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">slice_head</span>(<span class="at">n =</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span>        <span class="co"># &lt;= avoids the xgboost::slice conflict</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">slice_head</span>(<span class="at">n =</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span></span>
 <span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">pull</span>(zipcode)</span>
-<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>  baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">zipcode =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(zipcode, zip_mode))</span>
-<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a><span class="co"># 3) Amenities count</span></span>
-<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"id"</span>,<span class="st">"amenities"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(baseData))) {</span>
-<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>amen_counts <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
-<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a><span class="fu">select</span>(id, amenities) <span class="sc">%&gt;%</span></span>
-<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a><span class="fu">mutate</span>(<span class="at">amenities =</span> <span class="fu">replace_na</span>(amenities, <span class="st">""</span>)) <span class="sc">%&gt;%</span></span>
-<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>tidyr<span class="sc">::</span><span class="fu">separate_rows</span>(amenities, <span class="at">sep =</span> <span class="st">","</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a><span class="fu">mutate</span>(<span class="at">amenities =</span> stringr<span class="sc">::</span><span class="fu">str_trim</span>(amenities)) <span class="sc">%&gt;%</span></span>
-<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a><span class="fu">filter</span>(amenities <span class="sc">!=</span> <span class="st">""</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a><span class="fu">count</span>(id, <span class="at">name =</span> <span class="st">"count_amenities"</span>)</span>
-<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
-<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a><span class="fu">left_join</span>(amen_counts, <span class="at">by =</span> <span class="st">"id"</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a><span class="fu">mutate</span>(<span class="at">count_amenities =</span> <span class="fu">replace_na</span>(count_amenities, <span class="dv">0</span>L))</span>
-<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-55"><a href="#cb4-55" aria-hidden="true" tabindex="-1"></a><span class="co"># 4) Normalized review score (0–5 from 0–100)</span></span>
-<span id="cb4-56"><a href="#cb4-56" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-57"><a href="#cb4-57" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">review_score_5 =</span> <span class="cf">if</span> (<span class="st">"review_scores_rating"</span> <span class="sc">%in%</span> <span class="fu">names</span>(.)) review_scores_rating<span class="sc">/</span><span class="dv">20</span> <span class="cf">else</span> <span class="cn">NA_real_</span>)</span>
-<span id="cb4-58"><a href="#cb4-58" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-59"><a href="#cb4-59" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-split to keep row roles</span></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>  baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">zipcode =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(zipcode, zip_mode))</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a><span class="co"># 3) Amenities count</span></span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"id"</span>,<span class="st">"amenities"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(baseData))) {</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>  amen_counts <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">select</span>(id, amenities) <span class="sc">%&gt;%</span></span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">amenities =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(amenities, <span class="st">""</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>    tidyr<span class="sc">::</span><span class="fu">separate_rows</span>(amenities, <span class="at">sep =</span> <span class="st">","</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">amenities =</span> stringr<span class="sc">::</span><span class="fu">str_trim</span>(amenities)) <span class="sc">%&gt;%</span></span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">filter</span>(amenities <span class="sc">!=</span> <span class="st">""</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">count</span>(id, <span class="at">name =</span> <span class="st">"count_amenities"</span>)</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>  baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">left_join</span>(amen_counts, <span class="at">by =</span> <span class="st">"id"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">count_amenities =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(count_amenities, <span class="dv">0</span>L))</span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a><span class="co"># 4) Normalized review score (0–5 from 0–100)</span></span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>baseData <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span></span>
+<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">review_score_5 =</span> <span class="cf">if</span> (<span class="st">"review_scores_rating"</span> <span class="sc">%in%</span> <span class="fu">names</span>(.)) review_scores_rating<span class="sc">/</span><span class="dv">20</span> <span class="cf">else</span> <span class="cn">NA_real_</span>)</span>
+<span id="cb4-55"><a href="#cb4-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-56"><a href="#cb4-56" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-split to keep row roles</span></span>
+<span id="cb4-57"><a href="#cb4-57" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"train"</span>)</span>
+<span id="cb4-58"><a href="#cb4-58" aria-hidden="true" tabindex="-1"></a>test  <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"test"</span>)</span>
+<span id="cb4-59"><a href="#cb4-59" aria-hidden="true" tabindex="-1"></a>score <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"score"</span>) <span class="sc">%&gt;%</span> { <span class="cf">if</span> (<span class="fu">nrow</span>(.) <span class="sc">==</span> <span class="dv">0</span>) <span class="cn">NULL</span> <span class="cf">else</span> . }</span>
 <span id="cb4-60"><a href="#cb4-60" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-61"><a href="#cb4-61" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"train"</span>)</span>
-<span id="cb4-62"><a href="#cb4-62" aria-hidden="true" tabindex="-1"></a>test  <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"test"</span>)</span>
-<span id="cb4-63"><a href="#cb4-63" aria-hidden="true" tabindex="-1"></a>score <span class="ot">&lt;-</span> baseData <span class="sc">%&gt;%</span> <span class="fu">filter</span>(train_test_score <span class="sc">==</span> <span class="st">"score"</span>) <span class="sc">%&gt;%</span> { <span class="cf">if</span> (<span class="fu">nrow</span>(.) <span class="sc">==</span> <span class="dv">0</span>) <span class="cn">NULL</span> <span class="cf">else</span> . }</span>
-<span id="cb4-64"><a href="#cb4-64" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-65"><a href="#cb4-65" aria-hidden="true" tabindex="-1"></a><span class="co"># Zipcode aggregates (TRAIN ONLY) to avoid leakage</span></span>
-<span id="cb4-66"><a href="#cb4-66" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-67"><a href="#cb4-67" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"zipcode"</span>,<span class="st">"price"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(train))) {</span>
-<span id="cb4-68"><a href="#cb4-68" aria-hidden="true" tabindex="-1"></a>zip_aggs <span class="ot">&lt;-</span> train <span class="sc">%&gt;%</span></span>
-<span id="cb4-69"><a href="#cb4-69" aria-hidden="true" tabindex="-1"></a><span class="fu">group_by</span>(zipcode) <span class="sc">%&gt;%</span></span>
-<span id="cb4-70"><a href="#cb4-70" aria-hidden="true" tabindex="-1"></a><span class="fu">summarise</span>(<span class="at">zip_price_median =</span> <span class="fu">median</span>(price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb4-71"><a href="#cb4-71" aria-hidden="true" tabindex="-1"></a><span class="at">zip_price_mean   =</span> <span class="fu">mean</span>(price,   <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb4-72"><a href="#cb4-72" aria-hidden="true" tabindex="-1"></a><span class="at">.groups =</span> <span class="st">"drop"</span>)</span>
-<span id="cb4-73"><a href="#cb4-73" aria-hidden="true" tabindex="-1"></a>add_zip <span class="ot">&lt;-</span> <span class="cf">function</span>(df) {</span>
-<span id="cb4-74"><a href="#cb4-74" aria-hidden="true" tabindex="-1"></a>out <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> <span class="fu">left_join</span>(zip_aggs, <span class="at">by =</span> <span class="st">"zipcode"</span>)</span>
-<span id="cb4-75"><a href="#cb4-75" aria-hidden="true" tabindex="-1"></a>out <span class="sc">%&gt;%</span></span>
-<span id="cb4-76"><a href="#cb4-76" aria-hidden="true" tabindex="-1"></a><span class="fu">mutate</span>(<span class="at">zip_price_median =</span> <span class="fu">replace_na</span>(zip_price_median, <span class="fu">median</span>(train<span class="sc">$</span>price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)),</span>
-<span id="cb4-77"><a href="#cb4-77" aria-hidden="true" tabindex="-1"></a><span class="at">zip_price_mean   =</span> <span class="fu">replace_na</span>(zip_price_mean,   <span class="fu">mean</span>(train<span class="sc">$</span>price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)))</span>
-<span id="cb4-78"><a href="#cb4-78" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb4-79"><a href="#cb4-79" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(train); test <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(test); <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(score)) score <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(score)</span>
-<span id="cb4-80"><a href="#cb4-80" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb4-61"><a href="#cb4-61" aria-hidden="true" tabindex="-1"></a><span class="co"># 5) Zipcode aggregates (TRAIN ONLY) to avoid leakage</span></span>
+<span id="cb4-62"><a href="#cb4-62" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"zipcode"</span>,<span class="st">"price"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(train))) {</span>
+<span id="cb4-63"><a href="#cb4-63" aria-hidden="true" tabindex="-1"></a>  zip_aggs <span class="ot">&lt;-</span> train <span class="sc">%&gt;%</span></span>
+<span id="cb4-64"><a href="#cb4-64" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">group_by</span>(zipcode) <span class="sc">%&gt;%</span></span>
+<span id="cb4-65"><a href="#cb4-65" aria-hidden="true" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">summarise</span>(</span>
+<span id="cb4-66"><a href="#cb4-66" aria-hidden="true" tabindex="-1"></a>      <span class="at">zip_price_median =</span> stats<span class="sc">::</span><span class="fu">median</span>(price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb4-67"><a href="#cb4-67" aria-hidden="true" tabindex="-1"></a>      <span class="at">zip_price_mean   =</span> <span class="fu">mean</span>(price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb4-68"><a href="#cb4-68" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">"drop"</span></span>
+<span id="cb4-69"><a href="#cb4-69" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb4-70"><a href="#cb4-70" aria-hidden="true" tabindex="-1"></a>  add_zip <span class="ot">&lt;-</span> <span class="cf">function</span>(df) {</span>
+<span id="cb4-71"><a href="#cb4-71" aria-hidden="true" tabindex="-1"></a>    out <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">left_join</span>(zip_aggs, <span class="at">by =</span> <span class="st">"zipcode"</span>)</span>
+<span id="cb4-72"><a href="#cb4-72" aria-hidden="true" tabindex="-1"></a>    out <span class="sc">%&gt;%</span></span>
+<span id="cb4-73"><a href="#cb4-73" aria-hidden="true" tabindex="-1"></a>      dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb4-74"><a href="#cb4-74" aria-hidden="true" tabindex="-1"></a>        <span class="at">zip_price_median =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(zip_price_median, stats<span class="sc">::</span><span class="fu">median</span>(train<span class="sc">$</span>price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)),</span>
+<span id="cb4-75"><a href="#cb4-75" aria-hidden="true" tabindex="-1"></a>        <span class="at">zip_price_mean   =</span> tidyr<span class="sc">::</span><span class="fu">replace_na</span>(zip_price_mean,   <span class="fu">mean</span>(train<span class="sc">$</span>price, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb4-76"><a href="#cb4-76" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb4-77"><a href="#cb4-77" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb4-78"><a href="#cb4-78" aria-hidden="true" tabindex="-1"></a>  train <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(train)</span>
+<span id="cb4-79"><a href="#cb4-79" aria-hidden="true" tabindex="-1"></a>  test  <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(test)</span>
+<span id="cb4-80"><a href="#cb4-80" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(score)) score <span class="ot">&lt;-</span> <span class="fu">add_zip</span>(score)</span>
+<span id="cb4-81"><a href="#cb4-81" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
@@ -548,6 +593,8 @@ The workflow includes:</p>
 <span id="cb6-78"><a href="#cb6-78" aria-hidden="true" tabindex="-1"></a>cv_ctrl <span class="ot">&lt;-</span> caret<span class="sc">::</span><span class="fu">trainControl</span>(<span class="at">method =</span> <span class="st">"repeatedcv"</span>, <span class="at">number =</span> <span class="dv">5</span>, <span class="at">repeats =</span> <span class="dv">2</span>, <span class="at">verboseIter =</span> <span class="cn">FALSE</span>, <span class="at">allowParallel =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+<section id="random-forest" class="level3">
+<h3 class="anchored" data-anchor-id="random-forest">Random Forest</h3>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -601,6 +648,9 @@ The workflow includes:</p>
 <span id="cb7-48"><a href="#cb7-48" aria-hidden="true" tabindex="-1"></a><span class="co"># rf_metrics</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+</section>
+<section id="elastic-net" class="level3">
+<h3 class="anchored" data-anchor-id="elastic-net">Elastic Net</h3>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -665,6 +715,9 @@ The workflow includes:</p>
 <span id="cb8-59"><a href="#cb8-59" aria-hidden="true" tabindex="-1"></a><span class="co"># </span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+</section>
+<section id="xgboost" class="level3">
+<h3 class="anchored" data-anchor-id="xgboost">XGBoost</h3>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -728,6 +781,8 @@ The workflow includes:</p>
 <span id="cb9-58"><a href="#cb9-58" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+<section id="load-saved-models" class="level4">
+<h4 class="anchored" data-anchor-id="load-saved-models">Load Saved Models</h4>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -764,6 +819,8 @@ The workflow includes:</p>
 <span id="cb10-31"><a href="#cb10-31" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+</section>
+</section>
 </section>
 <section id="model-comparison-selection" class="level2">
 <h2 class="anchored" data-anchor-id="model-comparison-selection">5. Model Comparison &amp; Selection</h2>
@@ -1459,17 +1516,6 @@ Lower RMSE = better. Higher R² = better.</p>
 <span id="cb13-84"><a href="#cb13-84" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb13-85"><a href="#cb13-85" aria-hidden="true" tabindex="-1"></a>final_diag</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output cell-output-stderr">
-<pre><code>`geom_smooth()` using formula = 'y ~ x'</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Warning: Removed 119 rows containing non-finite outside the scale range
-(`stat_smooth()`).</code></pre>
-</div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Warning: Removed 119 rows containing missing values or values outside the scale range
-(`geom_point()`).</code></pre>
-</div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -1484,52 +1530,52 @@ Lower RMSE = better. Higher R² = better.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ensure best_fit exists even if this chunk is run alone</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(<span class="st">"best_fit"</span>) <span class="sc">||</span> <span class="fu">is.null</span>(best_fit)) {</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  best_fit <span class="ot">&lt;-</span> <span class="cf">switch</span>(best_name, <span class="at">RF =</span> rf_fit, <span class="at">EN =</span> en_fit, <span class="at">XGB =</span> xgb_fit)</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(best_fit))</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"RF"</span>) {</span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a><span class="co"># caret::varImp works on the trained ranger model wrapped by caret</span></span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>vi <span class="ot">&lt;-</span> caret<span class="sc">::</span><span class="fu">varImp</span>(best_fit)<span class="sc">$</span>importance <span class="sc">%&gt;%</span></span>
-<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>tibble<span class="sc">::</span><span class="fu">rownames_to_column</span>(<span class="st">"feature"</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">arrange</span>(dplyr<span class="sc">::</span><span class="fu">desc</span>(Overall)) <span class="sc">%&gt;%</span></span>
-<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
-<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(vi, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(feature, Overall), <span class="at">y =</span> Overall)) <span class="sc">+</span></span>
-<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#4E79A7"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
-<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Features — Random Forest"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Importance"</span>)</span>
-<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> <span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"XGB"</span>) {</span>
-<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Use underlying xgboost booster inside caret model</span></span>
-<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">"xgboost"</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
-<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a>imp <span class="ot">&lt;-</span> xgboost<span class="sc">::</span><span class="fu">xgb.importance</span>(</span>
-<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a><span class="at">feature_names =</span> <span class="fu">colnames</span>(X_train),</span>
-<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a><span class="at">model =</span> best_fit<span class="sc">$</span>finalModel</span>
-<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a>imp <span class="ot">&lt;-</span> imp <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
-<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(imp, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(Feature, Gain), <span class="at">y =</span> Gain)) <span class="sc">+</span></span>
-<span id="cb17-30"><a href="#cb17-30" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#E67E22"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
-<span id="cb17-31"><a href="#cb17-31" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Features — XGBoost"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Gain"</span>)</span>
-<span id="cb17-32"><a href="#cb17-32" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb17-33"><a href="#cb17-33" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> <span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"EN"</span>) {</span>
-<span id="cb17-34"><a href="#cb17-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-35"><a href="#cb17-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Coefficients from glmnet at best lambda</span></span>
-<span id="cb17-36"><a href="#cb17-36" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-37"><a href="#cb17-37" aria-hidden="true" tabindex="-1"></a>best_l <span class="ot">&lt;-</span> best_fit<span class="sc">$</span>bestTune<span class="sc">$</span>lambda</span>
-<span id="cb17-38"><a href="#cb17-38" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(<span class="fu">coef</span>(best_fit<span class="sc">$</span>finalModel, <span class="at">s =</span> best_l))</span>
-<span id="cb17-39"><a href="#cb17-39" aria-hidden="true" tabindex="-1"></a>en_coefs <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">term =</span> <span class="fu">rownames</span>(cf), <span class="at">estimate =</span> <span class="fu">as.numeric</span>(cf)) <span class="sc">%&gt;%</span></span>
-<span id="cb17-40"><a href="#cb17-40" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">filter</span>(term <span class="sc">!=</span> <span class="st">"(Intercept)"</span>) <span class="sc">%&gt;%</span></span>
-<span id="cb17-41"><a href="#cb17-41" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">arrange</span>(dplyr<span class="sc">::</span><span class="fu">desc</span>(<span class="fu">abs</span>(estimate))) <span class="sc">%&gt;%</span></span>
-<span id="cb17-42"><a href="#cb17-42" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
-<span id="cb17-43"><a href="#cb17-43" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(en_coefs, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(term, estimate), <span class="at">y =</span> estimate)) <span class="sc">+</span></span>
-<span id="cb17-44"><a href="#cb17-44" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#2E86C1"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
-<span id="cb17-45"><a href="#cb17-45" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Elastic Net Coefficients"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Coefficient (log-price scale)"</span>)</span>
-<span id="cb17-46"><a href="#cb17-46" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ensure best_fit exists even if this chunk is run alone</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(<span class="st">"best_fit"</span>) <span class="sc">||</span> <span class="fu">is.null</span>(best_fit)) {</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  best_fit <span class="ot">&lt;-</span> <span class="cf">switch</span>(best_name, <span class="at">RF =</span> rf_fit, <span class="at">EN =</span> en_fit, <span class="at">XGB =</span> xgb_fit)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(best_fit))</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"RF"</span>) {</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="co"># caret::varImp works on the trained ranger model wrapped by caret</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>vi <span class="ot">&lt;-</span> caret<span class="sc">::</span><span class="fu">varImp</span>(best_fit)<span class="sc">$</span>importance <span class="sc">%&gt;%</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>tibble<span class="sc">::</span><span class="fu">rownames_to_column</span>(<span class="st">"feature"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">arrange</span>(dplyr<span class="sc">::</span><span class="fu">desc</span>(Overall)) <span class="sc">%&gt;%</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(vi, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(feature, Overall), <span class="at">y =</span> Overall)) <span class="sc">+</span></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#4E79A7"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Features — Random Forest"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Importance"</span>)</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> <span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"XGB"</span>) {</span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Use underlying xgboost booster inside caret model</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">"xgboost"</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>imp <span class="ot">&lt;-</span> xgboost<span class="sc">::</span><span class="fu">xgb.importance</span>(</span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a><span class="at">feature_names =</span> <span class="fu">colnames</span>(X_train),</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a><span class="at">model =</span> best_fit<span class="sc">$</span>finalModel</span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>imp <span class="ot">&lt;-</span> imp <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(imp, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(Feature, Gain), <span class="at">y =</span> Gain)) <span class="sc">+</span></span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#E67E22"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Features — XGBoost"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Gain"</span>)</span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> <span class="cf">if</span> (best_name <span class="sc">==</span> <span class="st">"EN"</span>) {</span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Coefficients from glmnet at best lambda</span></span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a>best_l <span class="ot">&lt;-</span> best_fit<span class="sc">$</span>bestTune<span class="sc">$</span>lambda</span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(<span class="fu">coef</span>(best_fit<span class="sc">$</span>finalModel, <span class="at">s =</span> best_l))</span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a>en_coefs <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">term =</span> <span class="fu">rownames</span>(cf), <span class="at">estimate =</span> <span class="fu">as.numeric</span>(cf)) <span class="sc">%&gt;%</span></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">filter</span>(term <span class="sc">!=</span> <span class="st">"(Intercept)"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">arrange</span>(dplyr<span class="sc">::</span><span class="fu">desc</span>(<span class="fu">abs</span>(estimate))) <span class="sc">%&gt;%</span></span>
+<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a>dplyr<span class="sc">::</span><span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>)</span>
+<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(en_coefs, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">reorder</span>(term, estimate), <span class="at">y =</span> estimate)) <span class="sc">+</span></span>
+<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a><span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"#2E86C1"</span>) <span class="sc">+</span> <span class="fu">coord_flip</span>() <span class="sc">+</span></span>
+<span id="cb14-45"><a href="#cb14-45" aria-hidden="true" tabindex="-1"></a><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Top 20 Elastic Net Coefficients"</span>, <span class="at">x =</span> <span class="st">""</span>, <span class="at">y =</span> <span class="st">"Coefficient (log-price scale)"</span>)</span>
+<span id="cb14-46"><a href="#cb14-46" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
 <div>
@@ -1566,35 +1612,164 @@ Note
 </div>
 </div>
 </section>
+<section id="predicting-on-new-unseen-data" class="level2">
+<h2 class="anchored" data-anchor-id="predicting-on-new-unseen-data">8. Predicting on New (Unseen) Data</h2>
+<p>After training and selecting the best model, predictions were generated for <code>scoringData.csv</code>, which contains new Airbnb listings with no recorded prices. The goal is to estimate their nightly rental cost for submission.</p>
+<p>The training dataset reflects real NYC Airbnb market behavior. To understand market structure, I summarized and visualized the price distribution in the analysis dataset. The median nightly price is approximately <strong>$110</strong>, and most listings fall between <strong>$50–$250</strong> per night, with a long right-tail driven by premium and luxury properties.</p>
+<p>After producing model predictions for the unseen listings, I compared their distribution to the observed market data.<br>
+The predicted density curve aligns closely with the historical market distribution, which indicates:</p>
+<ul>
+<li>the model generalizes well,</li>
+<li>predictions fall within realistic market ranges, and</li>
+<li>the model does not systematically over- or under-estimate prices.</li>
+</ul>
+<p>This provides confidence that the model outputs plausible nightly price estimates for new listings.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"best_fit"</span>) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(best_fit))</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(score)) <span class="fu">stop</span>(<span class="st">"No scoring data found at 'data/scoringData.csv'."</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Helper: get the exact feature names the trained model expects</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>get_req_names <span class="ot">&lt;-</span> <span class="cf">function</span>(fit) {</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># xgboost via caret stores names in finalModel$feature_names</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  nm <span class="ot">&lt;-</span> <span class="fu">try</span>(fit<span class="sc">$</span>finalModel<span class="sc">$</span>feature_names, <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">inherits</span>(nm, <span class="st">"try-error"</span>) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(nm)) <span class="fu">return</span>(<span class="fu">as.character</span>(nm))</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># generic caret fallback: columns used during training (minus .outcome)</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(fit<span class="sc">$</span>trainingData)) {</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">setdiff</span>(<span class="fu">colnames</span>(fit<span class="sc">$</span>trainingData), <span class="st">".outcome"</span>))</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>  <span class="co"># last resort: use X_train colnames if present</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">exists</span>(<span class="st">"X_train"</span>)) <span class="fu">return</span>(<span class="fu">colnames</span>(X_train))</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stop</span>(<span class="st">"Could not infer required feature names for prediction."</span>)</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a><span class="co"># 1) Ensure we have a score matrix built (from prep-score-matrix)</span></span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"X_score"</span>))</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="co"># 2) Align X_score to the model’s required names</span></span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>req <span class="ot">&lt;-</span> <span class="fu">get_req_names</span>(best_fit)</span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Start from current X_score; add missing zeros, drop extras, order columns</span></span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>X_sc <span class="ot">&lt;-</span> X_score</span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>miss <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(req, <span class="fu">colnames</span>(X_sc))</span>
+<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(miss)) {</span>
+<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>  X_sc <span class="ot">&lt;-</span> <span class="fu">cbind</span>(</span>
+<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a>    X_sc,</span>
+<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>    <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> <span class="fu">nrow</span>(X_sc), <span class="at">ncol =</span> <span class="fu">length</span>(miss), <span class="at">dimnames =</span> <span class="fu">list</span>(<span class="cn">NULL</span>, miss))</span>
+<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>extra <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">colnames</span>(X_sc), req)</span>
+<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(extra)) X_sc <span class="ot">&lt;-</span> X_sc[, <span class="fu">setdiff</span>(<span class="fu">colnames</span>(X_sc), extra), drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>X_sc <span class="ot">&lt;-</span> X_sc[, req, drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a><span class="co"># Ensure it is a numeric matrix for xgboost</span></span>
+<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>X_sc <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(X_sc)</span>
+<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a><span class="fu">storage.mode</span>(X_sc) <span class="ot">&lt;-</span> <span class="st">"double"</span></span>
+<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a><span class="co"># 3) Predict (matrix path first; fallback to data.frame if needed)</span></span>
+<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>pred_log <span class="ot">&lt;-</span> <span class="fu">try</span>(<span class="fu">predict</span>(best_fit, <span class="at">newdata =</span> X_sc), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">inherits</span>(pred_log, <span class="st">"try-error"</span>) <span class="sc">||</span> <span class="fu">is.null</span>(pred_log)) {</span>
+<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>  pred_log <span class="ot">&lt;-</span> <span class="fu">predict</span>(best_fit, <span class="at">newdata =</span> <span class="fu">as.data.frame</span>(X_sc))</span>
+<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a><span class="co"># 4) Back-transform from log1p and clip at zero</span></span>
+<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a>pred_price <span class="ot">&lt;-</span> <span class="fu">pmax</span>(<span class="fu">expm1</span>(<span class="fu">as.numeric</span>(pred_log)), <span class="dv">0</span>)</span>
+<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a><span class="co"># 5) Build submission file: ONLY id and price</span></span>
+<span id="cb15-51"><a href="#cb15-51" aria-hidden="true" tabindex="-1"></a>submission <span class="ot">&lt;-</span> score <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">select</span>(id) <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">price =</span> pred_price)</span>
+<span id="cb15-52"><a href="#cb15-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-53"><a href="#cb15-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Sanity checks</span></span>
+<span id="cb15-54"><a href="#cb15-54" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"id"</span>,<span class="st">"price"</span>) <span class="sc">%in%</span> <span class="fu">names</span>(submission)))</span>
+<span id="cb15-55"><a href="#cb15-55" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">any</span>(<span class="fu">is.na</span>(submission<span class="sc">$</span>price)))</span>
+<span id="cb15-56"><a href="#cb15-56" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">any</span>(submission<span class="sc">$</span>price <span class="sc">&lt;</span> <span class="dv">0</span>))</span>
+<span id="cb15-57"><a href="#cb15-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-58"><a href="#cb15-58" aria-hidden="true" tabindex="-1"></a><span class="co"># 6) Write CSV per competition spec</span></span>
+<span id="cb15-59"><a href="#cb15-59" aria-hidden="true" tabindex="-1"></a>readr<span class="sc">::</span><span class="fu">write_csv</span>(submission, <span class="st">"submission.csv"</span>)</span>
+<span id="cb15-60"><a href="#cb15-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-61"><a href="#cb15-61" aria-hidden="true" tabindex="-1"></a><span class="co"># Preview</span></span>
+<span id="cb15-62"><a href="#cb15-62" aria-hidden="true" tabindex="-1"></a><span class="co"># head(submission)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(analysisData, <span class="fu">aes</span>(price)) <span class="sc">+</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">60</span>, <span class="at">fill =</span> <span class="st">"pink"</span>, <span class="at">alpha =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">labels =</span> scales<span class="sc">::</span>dollar) <span class="sc">+</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of Nightly Prices (Observed Market)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="about_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"submission"</span>), <span class="fu">exists</span>(<span class="st">"train"</span>))</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>preds_df <span class="ot">&lt;-</span> submission <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">source =</span> <span class="st">"Predicted (Scoring)"</span>)</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>train_df <span class="ot">&lt;-</span> train <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">transmute</span>(price, <span class="at">source =</span> <span class="st">"Observed (Train)"</span>)</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>        preds_df <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">rename</span>(<span class="at">price =</span> price),</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>        train_df),</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(<span class="at">x =</span> price, <span class="at">fill =</span> source)) <span class="sc">+</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_density</span>(<span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">labels =</span> fmt_dollar) <span class="sc">+</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Where do predicted prices sit vs. the training market?"</span>,</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">x =</span> <span class="st">"Nightly price"</span>, <span class="at">y =</span> <span class="st">"Density"</span>, <span class="at">fill =</span> <span class="st">""</span>) <span class="sc">+</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="about_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
 <section id="conclusion" class="level2">
 <h2 class="anchored" data-anchor-id="conclusion">8. Conclusion</h2>
-<p>This project successfully built and compared three machine learning models to predict nightly Airbnb prices in New York City.<br>
-After evaluating performance on a held-out test set, <strong>XGBoost</strong> achieved the best results, with the lowest RMSE and highest R², indicating strong predictive accuracy and generalization.</p>
-<p>Key takeaways:</p>
+<p>This project built a complete machine-learning workflow to predict nightly Airbnb rental prices in New York City — from data cleaning and feature engineering to model training, evaluation, and pricing new listings.</p>
+<p>After evaluating model performance on a held-out test set, <strong>XGBoost</strong> achieved the strongest results, with the lowest RMSE and highest R². Random Forest and Elastic Net performed reasonably well, but XGBoost captured non-linear relationships in the pricing structure more effectively.</p>
+<p><strong>Key takeaways:</strong></p>
 <ul>
-<li>Prices are strongly driven by room type, accommodates capacity, amenities, and neighborhood-level pricing.</li>
-<li>The model performs well across the majority of listings, with only a small number of outlier properties showing large residuals (typically luxury or highly atypical units).</li>
-<li>Diagnostics confirm that model errors are centered around zero and mostly symmetric, suggesting a stable and unbiased fit.</li>
-<li>Feature importance aligns with intuition: higher capacity, prime neighborhoods, and better amenities are associated with higher nightly rates.</li>
+<li>Major pricing drivers included <strong>accommodates</strong>, <strong>room type</strong>, <strong>amenities</strong>, and <strong>zipcode-level price aggregates</strong>, all of which align with real-world market behavior.</li>
+<li>Residual diagnostics showed errors centered around zero with minimal skew, indicating that the model is not systematically over- or under-pricing listings.</li>
+<li>Feature importance confirmed economic intuition: larger spaces, premium neighborhoods, and richer amenities consistently lead to higher nightly rates.</li>
+<li>Model predictions closely matched actual market prices, with only a small number of high-end luxury listings producing wider residuals.</li>
 </ul>
-<section id="what-could-improve-future-performance" class="level3">
-<h3 class="anchored" data-anchor-id="what-could-improve-future-performance">What could improve future performance?</h3>
+<section id="scoring-new-data" class="level3">
+<h3 class="anchored" data-anchor-id="scoring-new-data">Scoring New Data</h3>
+<p>A cleaned version of the scoring dataset was passed through the trained pipeline, including:</p>
 <ul>
-<li>Include calendar/seasonality features (weekends, holidays, peak tourism months)</li>
-<li>Incorporate host reputation (e.g., number of past stays, cancellation rates, response time)</li>
-<li>Fit a model that accounts for geographic distance to landmarks (Times Square, major subway hubs)</li>
-<li>Try advanced boosting approaches (LightGBM, CatBoost) or stacking models</li>
-<li>Model price as a <strong>two-step process</strong>:
-<ol type="1">
-<li>Predict if a listing is luxury / high-tier<br>
+<li>missing-value handling<br>
 </li>
-<li>Predict price within each tier</li>
-</ol></li>
+<li>categorical alignment<br>
+</li>
+<li>amenities engineering<br>
+</li>
+<li>zipcode-level pricing features<br>
+</li>
+<li>log-to-price back-transformation</li>
 </ul>
+<p>Final predictions were exported in the required Kaggle format (<code>id</code>, <code>price</code>) and saved as <code>submission.csv</code>.<br>
+The distribution of predicted prices closely overlapped the historical market data, suggesting realistic, market-consistent pricing.</p>
+</section>
+<section id="potential-next-improvements" class="level3">
+<h3 class="anchored" data-anchor-id="potential-next-improvements">Potential Next Improvements</h3>
+<p><strong>Enhancements possible with the current dataset:</strong> - Engineer richer host reputation features (e.g., review volume tiers, normalized ratings, superhost indicators) - Build a two-stage modeling approach that first identifies luxury listings, then predicts price within each segment - Add additional zipcode-level market signals (e.g., median neighborhood price, price density)</p>
+<p><strong>Enhancements requiring additional data:</strong> - Incorporate calendar effects such as weekends, holidays, or seasonal demand - Add spatial features such as distance to landmarks, subway access, or walkability - Evaluate more advanced ensemble methods (LightGBM, CatBoost, or stacked models)</p>
 </section>
 <section id="final-note" class="level3">
-<h3 class="anchored" data-anchor-id="final-note">Final note:</h3>
-<p>The XGBoost model can now be applied to <strong>new, unseen listings</strong> to provide estimated nightly prices, making it useful for hosts, investors, and platforms evaluating pricing strategies.</p>
+<h3 class="anchored" data-anchor-id="final-note">Final Note</h3>
+<p>With a strong predictive model and a fully reproducible scoring pipeline, this approach can now price <strong>new Airbnb listings</strong> — valuable for hosts optimizing revenue, investors evaluating short-term rental markets, or platforms designing dynamic pricing tools.</p>
 
 
 </section>

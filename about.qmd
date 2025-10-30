@@ -14,17 +14,18 @@ format:
 This project predicts nightly Airbnb rental prices in New York City using machine learning.  
 The workflow includes:
 
-✅ **Data loading & preprocessing**  
-✅ **Feature engineering** (amenity extraction, zipcode aggregates, imputation)  
-✅ **Modeling using three algorithms:**
+1. **Data loading & preprocessing**  
+2. **Feature engineering** (amenity extraction, zipcode aggregates, imputation)  
+3. **Modeling using three algorithms:**
    - Random Forest  
    - Elastic Net  
    - XGBoost  
-✅ **Model evaluation**  
-✅ **Model selection**  
-✅ **Diagnostic visualizations**
+4. **Model evaluation**  
+5. **Model selection**  
+6. **Diagnostic visualizations**
 
 The final model can be used to generate price predictions for new, unseen listings.
+
 
 
 ```{r set-up}
@@ -81,12 +82,42 @@ Data cleaning summary:
 
 ```{r load-data}
 
-analysisData <- suppressWarnings(
+analysisData <- suppressWarnings( 
+  readr::read_csv( 
+    "data/AnalysisData.csv",
+    na = c("", "NA", "N/A"),
+    col_types = cols( 
+      id = col_integer(),
+      price = col_double(), 
+      beds = col_double(), 
+      bedrooms = col_double(), 
+      bathrooms = col_double(), 
+      accommodates = col_integer(), 
+      review_scores_rating = col_double(), 
+      number_of_reviews = col_integer(), 
+      property_type = col_character(), 
+      bed_type = col_character(), 
+      neighbourhood_group_cleansed = col_character(), 
+      room_type = col_character(), 
+      cancellation_policy = col_character(), 
+      host_is_superhost = col_character(), 
+      instant_bookable = col_character(), 
+      zipcode = col_character(), 
+      city = col_character(), 
+      amenities = col_character(),
+      license = col_character(),
+      jurisdiction_names = col_character()
+      )
+                                     ) 
+  ) 
+
+
+scoringData <- suppressWarnings(
   readr::read_csv(
-    "data/analysis_data.csv",
+    "data/scoringData.csv",
+    na = c("", "NA", "N/A"),
     col_types = cols(
       id = col_integer(),
-      price = col_double(),
       beds = col_double(),
       bedrooms = col_double(),
       bathrooms = col_double(),
@@ -99,41 +130,35 @@ analysisData <- suppressWarnings(
       room_type = col_character(),
       cancellation_policy = col_character(),
       host_is_superhost = col_character(),
-      instant_bookable  = col_character(),
+      instant_bookable = col_character(),
       zipcode = col_character(),
       city = col_character(),
-      amenities = col_character()
+      amenities = col_character(),
+      license = col_character(),
+      jurisdiction_names = col_character()
     )
   )
 )
 
 
-
-scoring_exists <- file.exists("scoringData.csv")
-scoringData <- if (scoring_exists) readr::read_csv("scoringData.csv", show_col_types = FALSE) else NULL
-
-# Ensure common types BEFORE combining (zipcode as character)
-
-if ("zipcode" %in% names(analysisData)) analysisData <- analysisData %>% mutate(zipcode = as.character(zipcode))
-if (!is.null(scoringData) && "zipcode" %in% names(scoringData)) scoringData <- scoringData %>% mutate(zipcode = as.character(zipcode))
-
+# checking the col names for those cols and made the characters. 
+# 32 = zipcode, 80 = license and 81 = jurisdiction_names
+# colnames(analysisData_raw) %>% tibble::enframe(name = "col_number", value = "name")
 
 
 ```
 
 
 
-```{r split}
+```{r split-data}
 # 70/30 split stratified by price
-
 split_obj <- rsample::initial_split(analysisData, prop = 0.70, strata = price)
-train <- rsample::training(split_obj)  %>% mutate(train_test_score = "train")
-test  <- rsample::testing(split_obj)   %>% mutate(train_test_score = "test")
-if (!is.null(scoringData)) scoringData <- scoringData %>% mutate(train_test_score = "score")
+train <- rsample::training(split_obj)  %>% dplyr::mutate(train_test_score = "train")
+test  <- rsample::testing(split_obj)   %>% dplyr::mutate(train_test_score = "test")
+if (!is.null(scoringData)) scoringData <- scoringData %>% dplyr::mutate(train_test_score = "score")
 
 # Combine once; engineer once
-
-baseData <- bind_rows(train, test, scoringData) %>% clean_names()
+baseData <- dplyr::bind_rows(train, test, scoringData) %>% janitor::clean_names()
 
 ```
 
@@ -142,87 +167,91 @@ baseData <- bind_rows(train, test, scoringData) %>% clean_names()
 #| warning: false
 
 # Likely categoricals -> character (we'll factor later)
-
-cat_vars <- c("bed_type","property_type","neighbourhood_group_cleansed","room_type",
-"cancellation_policy","host_is_superhost","instant_bookable","zipcode","city")
+cat_vars <- c(
+  "bed_type","property_type","neighbourhood_group_cleansed","room_type",
+  "cancellation_policy","host_is_superhost","instant_bookable",
+  "zipcode","city","license","jurisdiction_names"
+)
 for (v in intersect(cat_vars, names(baseData))) baseData[[v]] <- as.character(baseData[[v]])
 
 # 1) Beds imputation via accommodates (simple linear model)
-
 if (all(c("beds","accommodates") %in% names(baseData))) {
-fit_df <- baseData %>% filter(!is.na(beds), !is.na(accommodates))
-if (nrow(fit_df) > 10) {
-lm_beds <- lm(beds ~ accommodates, data = fit_df)
-baseData <- baseData %>%
-mutate(
-  beds = if_else(
-    is.na(beds) & !is.na(accommodates),
-    round(predict(lm_beds, newdata = pick(everything())), 0),
-    beds
-  )
-)
+  fit_df <- baseData %>% dplyr::filter(!is.na(beds), !is.na(accommodates))
+  if (nrow(fit_df) > 10) {
+    lm_beds <- lm(beds ~ accommodates, data = fit_df)
+    baseData <- baseData %>%
+      dplyr::mutate(
+        beds = dplyr::if_else(
+          is.na(beds) & !is.na(accommodates),
+          round(predict(lm_beds, newdata = dplyr::pick(everything())), 0),
+          beds
+        )
+      )
+  }
+  if (any(is.na(baseData$beds))) {
+    baseData <- baseData %>% dplyr::mutate(beds = dplyr::if_else(is.na(beds), stats::median(beds, na.rm = TRUE), beds))
+  }
+}
 
-}
-if (any(is.na(baseData$beds))) {
-baseData <- baseData %>% mutate(beds = if_else(is.na(beds), median(beds, na.rm = TRUE), beds))
-}
-}
-
-# 2) Zipcode impute to mode  ✅ FIXED
+# 2) Zipcode impute to mode
 if ("zipcode" %in% names(baseData)) {
   zip_mode <- baseData %>%
     dplyr::filter(!is.na(zipcode)) %>%
     dplyr::count(zipcode, sort = TRUE) %>%
-    dplyr::slice_head(n = 1) %>%        # <= avoids the xgboost::slice conflict
+    dplyr::slice_head(n = 1) %>%
     dplyr::pull(zipcode)
-
   baseData <- baseData %>% dplyr::mutate(zipcode = tidyr::replace_na(zipcode, zip_mode))
 }
 
-
 # 3) Amenities count
-
 if (all(c("id","amenities") %in% names(baseData))) {
-amen_counts <- baseData %>%
-select(id, amenities) %>%
-mutate(amenities = replace_na(amenities, "")) %>%
-tidyr::separate_rows(amenities, sep = ",") %>%
-mutate(amenities = stringr::str_trim(amenities)) %>%
-filter(amenities != "") %>%
-count(id, name = "count_amenities")
-baseData <- baseData %>%
-left_join(amen_counts, by = "id") %>%
-mutate(count_amenities = replace_na(count_amenities, 0L))
+  amen_counts <- baseData %>%
+    dplyr::select(id, amenities) %>%
+    dplyr::mutate(amenities = tidyr::replace_na(amenities, "")) %>%
+    tidyr::separate_rows(amenities, sep = ",") %>%
+    dplyr::mutate(amenities = stringr::str_trim(amenities)) %>%
+    dplyr::filter(amenities != "") %>%
+    dplyr::count(id, name = "count_amenities")
+  baseData <- baseData %>%
+    dplyr::left_join(amen_counts, by = "id") %>%
+    dplyr::mutate(count_amenities = tidyr::replace_na(count_amenities, 0L))
 }
 
 # 4) Normalized review score (0–5 from 0–100)
-
-baseData <- baseData %>% mutate(review_score_5 = if ("review_scores_rating" %in% names(.)) review_scores_rating/20 else NA_real_)
+baseData <- baseData %>%
+  dplyr::mutate(review_score_5 = if ("review_scores_rating" %in% names(.)) review_scores_rating/20 else NA_real_)
 
 # Re-split to keep row roles
+train <- baseData %>% dplyr::filter(train_test_score == "train")
+test  <- baseData %>% dplyr::filter(train_test_score == "test")
+score <- baseData %>% dplyr::filter(train_test_score == "score") %>% { if (nrow(.) == 0) NULL else . }
 
-train <- baseData %>% filter(train_test_score == "train")
-test  <- baseData %>% filter(train_test_score == "test")
-score <- baseData %>% filter(train_test_score == "score") %>% { if (nrow(.) == 0) NULL else . }
-
-# Zipcode aggregates (TRAIN ONLY) to avoid leakage
-
+# 5) Zipcode aggregates (TRAIN ONLY) to avoid leakage
 if (all(c("zipcode","price") %in% names(train))) {
-zip_aggs <- train %>%
-group_by(zipcode) %>%
-summarise(zip_price_median = median(price, na.rm = TRUE),
-zip_price_mean   = mean(price,   na.rm = TRUE),
-.groups = "drop")
-add_zip <- function(df) {
-out <- df %>% left_join(zip_aggs, by = "zipcode")
-out %>%
-mutate(zip_price_median = replace_na(zip_price_median, median(train$price, na.rm = TRUE)),
-zip_price_mean   = replace_na(zip_price_mean,   mean(train$price, na.rm = TRUE)))
-}
-train <- add_zip(train); test <- add_zip(test); if (!is.null(score)) score <- add_zip(score)
+  zip_aggs <- train %>%
+    dplyr::group_by(zipcode) %>%
+    dplyr::summarise(
+      zip_price_median = stats::median(price, na.rm = TRUE),
+      zip_price_mean   = mean(price, na.rm = TRUE),
+      .groups = "drop"
+    )
+  add_zip <- function(df) {
+    out <- df %>% dplyr::left_join(zip_aggs, by = "zipcode")
+    out %>%
+      dplyr::mutate(
+        zip_price_median = tidyr::replace_na(zip_price_median, stats::median(train$price, na.rm = TRUE)),
+        zip_price_mean   = tidyr::replace_na(zip_price_mean,   mean(train$price, na.rm = TRUE))
+      )
+  }
+  train <- add_zip(train)
+  test  <- add_zip(test)
+  if (!is.null(score)) score <- add_zip(score)
 }
 
 ```
+
+
+
 ## 3. Exploratory Data Analysis (EDA)
 Price distributions show heavy right skew, which motivates log-transformation during modeling. Room type and capacity also show clear price separation.
 
@@ -265,6 +294,7 @@ Models trained:
 | Random Forest | ranger | Non-linear, robust, interpretable feature importance |
 | Elastic Net | glmnet | Linear, with L1/L2 regularization |
 | XGBoost | xgboost | Gradient boosting, strong performance on tabular data |
+
 
 ```{r modeling}
 # ---- Target on log scale ----
@@ -348,6 +378,7 @@ cv_ctrl <- caret::trainControl(method = "repeatedcv", number = 5, repeats = 2, v
 
 ```
 
+### Random Forest 
 ```{r model-one}
 # ### ---------------- Random Forest (caret + ranger, saved model) ----------------
 # if (!dir.exists("models")) dir.create("models")
@@ -399,6 +430,8 @@ cv_ctrl <- caret::trainControl(method = "repeatedcv", number = 5, repeats = 2, v
 # rf_metrics
 
 ```
+
+### Elastic Net
 
 ```{r model-two}
 # ### ---------------- Elastic Net (caret + glmnet, saved model) ----------------
@@ -464,6 +497,7 @@ cv_ctrl <- caret::trainControl(method = "repeatedcv", number = 5, repeats = 2, v
 
 ```
 
+### XGBoost
 
 ```{r model-three}
 
@@ -528,7 +562,7 @@ cv_ctrl <- caret::trainControl(method = "repeatedcv", number = 5, repeats = 2, v
 
 ```
 
-
+#### Load Saved Models 
 ```{r load-saved-models, message=FALSE}
 # ---- Load saved models from models/ ----
 
@@ -697,7 +731,7 @@ Residuals Q–Q Plot:
 The residual distribution deviates from perfect normality in the tails — again driven by extreme listings — but the majority fall near the reference line, supporting that model errors are approximately symmetric and well-behaved.
 
 Overall, the diagnostics show that the XGBoost model generalizes well, captures the main pricing structure in the data, and only struggles on a small number of extreme cases (luxury or atypical listings).
-```{r diagnostics, fig.width=11, fig.height=7}
+```{r diagnostics, message=FALSE, warning=FALSE, fig.width=11, fig.height=7}
 
 # --- prerequisites ---
 if (!exists("metrics_tbl")) stop("metrics_tbl not found.")
@@ -856,33 +890,261 @@ labs(title = "Top 20 Elastic Net Coefficients", x = "", y = "Coefficient (log-pr
 :::
 
 
+```{r prep-score-matrix, include=FALSE}
+# Only run if score exists
+if (!is.null(score)) {
+  stopifnot(exists("predictors"))
+
+  # Pool rare categories in SCORE using TRAIN as reference
+  if (exists("cat_vars_model")) {
+    for (v in intersect(cat_vars_model, names(train))) {
+      tx <- ifelse(is.na(train[[v]]), "Unknown", as.character(train[[v]]))
+      props <- prop.table(table(tx))
+      keep  <- names(props[props >= 0.01])
+      map_levels <- function(z) {
+        z <- ifelse(is.na(z), "Unknown", as.character(z))
+        z[!(z %in% keep) & z != "Unknown"] <- "Other"
+        factor(z, levels = unique(c(keep, "Other", "Unknown")))
+      }
+      if (v %in% names(score)) score[[v]] <- map_levels(score[[v]])
+    }
+    for (v in intersect(cat_vars_model, names(score))) {
+      score[[v]] <- factor(score[[v]], levels = levels(train[[v]]))
+    }
+  }
+
+  # Numeric imputation with TRAIN medians
+  if (exists("num_vars")) {
+    for (v in intersect(num_vars, names(score))) {
+      if (anyNA(score[[v]])) {
+        med <- stats::median(train[[v]], na.rm = TRUE)
+        score[[v]][is.na(score[[v]])] <- med
+      }
+    }
+  }
+
+  # Build model matrix for SCORE and align to X_train
+  df_score <- score %>% dplyr::select(all_of(predictors))
+  X_score  <- model.matrix(~ . - 1, data = df_score)
+
+  miss <- setdiff(colnames(X_train), colnames(X_score))
+  if (length(miss)) {
+    X_score <- cbind(
+      X_score,
+      matrix(0, nrow = nrow(X_score), ncol = length(miss), dimnames = list(NULL, miss))
+    )
+  }
+  extra <- setdiff(colnames(X_score), colnames(X_train))
+  if (length(extra)) X_score <- X_score[, setdiff(colnames(X_score), extra), drop = FALSE]
+  X_score <- X_score[, colnames(X_train), drop = FALSE]
+}
+```
+
+## 8. Predicting on New (Unseen) Data
+
+After training and selecting the best model, predictions were generated for `scoringData.csv`, which contains new Airbnb listings with no recorded prices. The goal is to estimate their nightly rental cost for submission.
+
+The training dataset reflects real NYC Airbnb market behavior. To understand market structure, I summarized and visualized the price distribution in the analysis dataset. The median nightly price is approximately **$110**, and most listings fall between **$50–$250** per night, with a long right-tail driven by premium and luxury properties.
+
+After producing model predictions for the unseen listings, I compared their distribution to the observed market data.  
+The predicted density curve aligns closely with the historical market distribution, which indicates:
+
+- the model generalizes well,
+- predictions fall within realistic market ranges, and
+- the model does not systematically over- or under-estimate prices.
+
+This provides confidence that the model outputs plausible nightly price estimates for new listings.
+
+```{r predict-new-data}
+stopifnot(exists("best_fit") && !is.null(best_fit))
+if (is.null(score)) stop("No scoring data found at 'data/scoringData.csv'.")
+
+# Helper: get the exact feature names the trained model expects
+get_req_names <- function(fit) {
+  # xgboost via caret stores names in finalModel$feature_names
+  nm <- try(fit$finalModel$feature_names, silent = TRUE)
+  if (!inherits(nm, "try-error") && !is.null(nm)) return(as.character(nm))
+  # generic caret fallback: columns used during training (minus .outcome)
+  if (!is.null(fit$trainingData)) {
+    return(setdiff(colnames(fit$trainingData), ".outcome"))
+  }
+  # last resort: use X_train colnames if present
+  if (exists("X_train")) return(colnames(X_train))
+  stop("Could not infer required feature names for prediction.")
+}
+
+# 1) Ensure we have a score matrix built (from prep-score-matrix)
+stopifnot(exists("X_score"))
+
+# 2) Align X_score to the model’s required names
+req <- get_req_names(best_fit)
+
+# Start from current X_score; add missing zeros, drop extras, order columns
+X_sc <- X_score
+miss <- setdiff(req, colnames(X_sc))
+if (length(miss)) {
+  X_sc <- cbind(
+    X_sc,
+    matrix(0, nrow = nrow(X_sc), ncol = length(miss), dimnames = list(NULL, miss))
+  )
+}
+extra <- setdiff(colnames(X_sc), req)
+if (length(extra)) X_sc <- X_sc[, setdiff(colnames(X_sc), extra), drop = FALSE]
+X_sc <- X_sc[, req, drop = FALSE]
+
+# Ensure it is a numeric matrix for xgboost
+X_sc <- as.matrix(X_sc)
+storage.mode(X_sc) <- "double"
+
+# 3) Predict (matrix path first; fallback to data.frame if needed)
+pred_log <- try(predict(best_fit, newdata = X_sc), silent = TRUE)
+if (inherits(pred_log, "try-error") || is.null(pred_log)) {
+  pred_log <- predict(best_fit, newdata = as.data.frame(X_sc))
+}
+
+# 4) Back-transform from log1p and clip at zero
+pred_price <- pmax(expm1(as.numeric(pred_log)), 0)
+
+# 5) Build submission file: ONLY id and price
+submission <- score %>% dplyr::select(id) %>% dplyr::mutate(price = pred_price)
+
+# Sanity checks
+stopifnot(all(c("id","price") %in% names(submission)))
+stopifnot(!any(is.na(submission$price)))
+stopifnot(!any(submission$price < 0))
+
+# 6) Write CSV per competition spec
+readr::write_csv(submission, "data/submission.csv")
+
+# Preview
+# head(submission)
+
+
+```
+```{r}
+library(ggplot2)
+ggplot(analysisData, aes(price)) +
+  geom_histogram(bins = 60, fill = "pink", alpha = 0.6) +
+  scale_x_continuous(labels = scales::dollar) +
+  labs(title = "Distribution of Nightly Prices (Observed Market)")
+
+```
+
+```{r}
+stopifnot(exists("submission"), exists("train"))
+preds_df <- submission %>% dplyr::mutate(source = "Predicted (Scoring)")
+train_df <- train %>% dplyr::transmute(price, source = "Observed (Train)")
+
+ggplot(dplyr::bind_rows(
+        preds_df %>% dplyr::rename(price = price),
+        train_df),
+       aes(x = price, fill = source)) +
+  geom_density(alpha = 0.4) +
+  scale_x_continuous(labels = fmt_dollar) +
+  labs(title = "Where do predicted prices sit vs. the training market?",
+       x = "Nightly price", y = "Density", fill = "") +
+  theme_minimal()
+```
+```{r include=FALSE}
+stopifnot(exists("best_preds"))
+
+calib <- best_preds %>%
+  dplyr::mutate(q = cut(price,
+                        breaks = quantile(price, probs = seq(0,1,0.1), na.rm=TRUE),
+                        include.lowest = TRUE)) %>%
+  dplyr::group_by(q) %>%
+  dplyr::summarise(actual = median(price, na.rm=TRUE),
+                   pred   = median(pred,  na.rm=TRUE),
+                   .groups = "drop")
+
+ggplot(calib, aes(x = actual, y = pred)) +
+  geom_abline(linetype = 2) +
+  geom_point(size = 2) +
+  scale_x_continuous(labels = fmt_dollar) +
+  scale_y_continuous(labels = fmt_dollar) +
+  labs(title = "Quantile calibration on held-out test set",
+       x = "Median actual (by quantile)", y = "Median predicted") +
+  theme_minimal()
+```
+
+```{r include=FALSE}
+stopifnot(exists("submission"), exists("score"))
+
+score_pred <- score %>%
+  dplyr::select(id, room_type, accommodates, neighbourhood_group_cleansed) %>%
+  dplyr::inner_join(submission, by = "id") %>%
+  dplyr::mutate(room_type = forcats::fct_lump_n(room_type, n = 4))
+
+pA <- ggplot(score_pred, aes(x = room_type, y = price)) +
+  geom_boxplot(outlier.alpha = 0.15) +
+  scale_y_continuous(labels = fmt_dollar) +
+  labs(title = "Predicted price by room type (scoring set)", x = "", y = "Predicted price")
+
+pB <- ggplot(score_pred, aes(x = accommodates, y = price)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) +
+  scale_y_continuous(labels = fmt_dollar) +
+  labs(title = "Predicted price vs. accommodates", x = "Accommodates", y = "Predicted price")
+
+pA / pB
+```
+
+
+
+```{r include=FALSE}
+top_k <- submission %>%
+  dplyr::arrange(dplyr::desc(price)) %>%
+  dplyr::slice(1:15) %>%
+  dplyr::left_join(score %>% dplyr::select(id, room_type, accommodates, neighbourhood_group_cleansed),
+                   by = "id") %>%
+  dplyr::mutate(rank = dplyr::row_number()) %>%
+  dplyr::select(rank, id, price, room_type, accommodates, neighbourhood_group_cleansed)
+
+gt::gt(top_k) %>%
+  gt::fmt_currency(columns = "price", currency = "USD", decimals = 0) %>%
+  gt::tab_header(title = "Top 15 predicted listings in the scoring set") %>%
+  gt::cols_label(neighbourhood_group_cleansed = "Neighborhood grp")
+```
+
 
 ## 8. Conclusion
 
-This project successfully built and compared three machine learning models to predict nightly Airbnb prices in New York City.  
-After evaluating performance on a held-out test set, **XGBoost** achieved the best results, with the lowest RMSE and highest R², indicating strong predictive accuracy and generalization.
+This project built a complete machine-learning workflow to predict nightly Airbnb rental prices in New York City — from data cleaning and feature engineering to model training, evaluation, and pricing new listings.
 
-Key takeaways:
+After evaluating model performance on a held-out test set, **XGBoost** achieved the strongest results, with the lowest RMSE and highest R². Random Forest and Elastic Net performed reasonably well, but XGBoost captured non-linear relationships in the pricing structure more effectively.
 
-- Prices are strongly driven by room type, accommodates capacity, amenities, and neighborhood-level pricing.
-- The model performs well across the majority of listings, with only a small number of outlier properties showing large residuals (typically luxury or highly atypical units).
-- Diagnostics confirm that model errors are centered around zero and mostly symmetric, suggesting a stable and unbiased fit.
-- Feature importance aligns with intuition: higher capacity, prime neighborhoods, and better amenities are associated with higher nightly rates.
+**Key takeaways:**
 
-### What could improve future performance?
+- Major pricing drivers included **accommodates**, **room type**, **amenities**, and **zipcode-level price aggregates**, all of which align with real-world market behavior.
+- Residual diagnostics showed errors centered around zero with minimal skew, indicating that the model is not systematically over- or under-pricing listings.
+- Feature importance confirmed economic intuition: larger spaces, premium neighborhoods, and richer amenities consistently lead to higher nightly rates.
+- Model predictions closely matched actual market prices, with only a small number of high-end luxury listings producing wider residuals.
 
-- Include calendar/seasonality features (weekends, holidays, peak tourism months)
-- Incorporate host reputation (e.g., number of past stays, cancellation rates, response time)
-- Fit a model that accounts for geographic distance to landmarks (Times Square, major subway hubs)
-- Try advanced boosting approaches (LightGBM, CatBoost) or stacking models
-- Model price as a **two-step process**:  
-  1) Predict if a listing is luxury / high-tier  
-  2) Predict price within each tier
+### Scoring New Data
 
-### Final note:
+A cleaned version of the scoring dataset was passed through the trained pipeline, including:
 
-The XGBoost model can now be applied to **new, unseen listings** to provide estimated nightly prices, making it useful for hosts, investors, and platforms evaluating pricing strategies.
+- missing-value handling  
+- categorical alignment  
+- amenities engineering  
+- zipcode-level pricing features  
+- log-to-price back-transformation  
 
+Final predictions were exported in the required Kaggle format (`id`, `price`) and saved as `submission.csv`.  
+The distribution of predicted prices closely overlapped the historical market data, suggesting realistic, market-consistent pricing.
 
+### Potential Next Improvements
 
+**Enhancements possible with the current dataset:**
+- Engineer richer host reputation features (e.g., review volume tiers, normalized ratings, superhost indicators)
+- Build a two-stage modeling approach that first identifies luxury listings, then predicts price within each segment
+- Add additional zipcode-level market signals (e.g., median neighborhood price, price density)
 
+**Enhancements requiring additional data:**
+- Incorporate calendar effects such as weekends, holidays, or seasonal demand
+- Add spatial features such as distance to landmarks, subway access, or walkability
+- Evaluate more advanced ensemble methods (LightGBM, CatBoost, or stacked models)
+
+### Final Note
+
+With a strong predictive model and a fully reproducible scoring pipeline, this approach can now price **new Airbnb listings** — valuable for hosts optimizing revenue, investors evaluating short-term rental markets, or platforms designing dynamic pricing tools.
