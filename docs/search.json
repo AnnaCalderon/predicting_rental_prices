@@ -7,13 +7,6 @@
     "text": "This project predicts nightly Airbnb rental prices in New York City using machine learning.\nThe workflow includes:\n✅ Data loading & preprocessing\n✅ Feature engineering (amenity extraction, zipcode aggregates, imputation)\n✅ Modeling using three algorithms: - Random Forest\n- Elastic Net\n- XGBoost\n✅ Model evaluation\n✅ Model selection\n✅ Diagnostic visualizations\nThe final model can be used to generate price predictions for new, unseen listings."
   },
   {
-    "objectID": "about.html#notes-tweaks",
-    "href": "about.html#notes-tweaks",
-    "title": "About",
-    "section": "Notes / Tweaks",
-    "text": "Notes / Tweaks\n\nIf you sometimes re-tune a model, just delete its .rds to force retraining once; after that, it’ll load quickly again.\nThe comparison table pulls from whatever models exist; it’s robust to missing any one of RF/EN/XGB.\nAll visuals reuse your global theme + fmt_dollar, so they match your site’s style."
-  },
-  {
     "objectID": "about.html#overview",
     "href": "about.html#overview",
     "title": "Predicting Airbnb Rental Prices in NYC",
@@ -70,24 +63,10 @@
     "text": "7. Feature Importance\n\n\nCode\n# Ensure best_fit exists even if this chunk is run alone\nif (!exists(\"best_fit\") || is.null(best_fit)) {\n  best_fit &lt;- switch(best_name, RF = rf_fit, EN = en_fit, XGB = xgb_fit)\n  stopifnot(!is.null(best_fit))\n}\n\nif (best_name == \"RF\") {\n\n# caret::varImp works on the trained ranger model wrapped by caret\n\nvi &lt;- caret::varImp(best_fit)$importance %&gt;%\ntibble::rownames_to_column(\"feature\") %&gt;%\ndplyr::arrange(dplyr::desc(Overall)) %&gt;%\ndplyr::slice(1:20)\nggplot(vi, aes(x = reorder(feature, Overall), y = Overall)) +\ngeom_col(fill = \"#4E79A7\") + coord_flip() +\nlabs(title = \"Top 20 Features — Random Forest\", x = \"\", y = \"Importance\")\n\n} else if (best_name == \"XGB\") {\n\n# Use underlying xgboost booster inside caret model\n\nif (requireNamespace(\"xgboost\", quietly = TRUE)) {\nimp &lt;- xgboost::xgb.importance(\nfeature_names = colnames(X_train),\nmodel = best_fit$finalModel\n)\nimp &lt;- imp %&gt;% dplyr::slice(1:20)\nggplot(imp, aes(x = reorder(Feature, Gain), y = Gain)) +\ngeom_col(fill = \"#E67E22\") + coord_flip() +\nlabs(title = \"Top 20 Features — XGBoost\", x = \"\", y = \"Gain\")\n}\n} else if (best_name == \"EN\") {\n\n# Coefficients from glmnet at best lambda\n\nbest_l &lt;- best_fit$bestTune$lambda\ncf &lt;- as.matrix(coef(best_fit$finalModel, s = best_l))\nen_coefs &lt;- tibble::tibble(term = rownames(cf), estimate = as.numeric(cf)) %&gt;%\ndplyr::filter(term != \"(Intercept)\") %&gt;%\ndplyr::arrange(dplyr::desc(abs(estimate))) %&gt;%\ndplyr::slice(1:20)\nggplot(en_coefs, aes(x = reorder(term, estimate), y = estimate)) +\ngeom_col(fill = \"#2E86C1\") + coord_flip() +\nlabs(title = \"Top 20 Elastic Net Coefficients\", x = \"\", y = \"Coefficient (log-price scale)\")\n}\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNote\n\n\n\nModel-specific interpretation notes\n\nXGBoost “Gain”\n\nGain tells us how important a feature is by measuring how much it helps the model reduce prediction error.\nHigher gain = the feature contributed more to improving accuracy.\n\nElastic Net coefficients\n\nCoefficients are learned on the log-price scale, which means they translate to percentage changes in price.\nTo interpret a coefficient: convert using exp(coef) - 1.\nExample: a coefficient of +0.07 ≈ +7.25% higher price, because exp(0.07) - 1 ≈ 0.0725."
   },
   {
-    "objectID": "about.html#final-scoring-conclusion",
-    "href": "about.html#final-scoring-conclusion",
-    "title": "Predicting Airbnb Rental Prices in NYC",
-    "section": "8. Final Scoring / Conclusion",
-    "text": "8. Final Scoring / Conclusion"
-  },
-  {
     "objectID": "about.html#conclusion",
     "href": "about.html#conclusion",
     "title": "Predicting Airbnb Rental Prices in NYC",
     "section": "8. Conclusion",
     "text": "8. Conclusion\nThis project successfully built and compared three machine learning models to predict nightly Airbnb prices in New York City.\nAfter evaluating performance on a held-out test set, XGBoost achieved the best results, with the lowest RMSE and highest R², indicating strong predictive accuracy and generalization.\nKey takeaways:\n\nPrices are strongly driven by room type, accommodates capacity, amenities, and neighborhood-level pricing.\nThe model performs well across the majority of listings, with only a small number of outlier properties showing large residuals (typically luxury or highly atypical units).\nDiagnostics confirm that model errors are centered around zero and mostly symmetric, suggesting a stable and unbiased fit.\nFeature importance aligns with intuition: higher capacity, prime neighborhoods, and better amenities are associated with higher nightly rates.\n\n\nWhat could improve future performance?\n\nInclude calendar/seasonality features (weekends, holidays, peak tourism months)\nIncorporate host reputation (e.g., number of past stays, cancellation rates, response time)\nFit a model that accounts for geographic distance to landmarks (Times Square, major subway hubs)\nTry advanced boosting approaches (LightGBM, CatBoost) or stacking models\nModel price as a two-step process:\n\nPredict if a listing is luxury / high-tier\n\nPredict price within each tier\n\n\n\n\nFinal note:\nThe XGBoost model can now be applied to new, unseen listings to provide estimated nightly prices, making it useful for hosts, investors, and platforms evaluating pricing strategies."
-  },
-  {
-    "objectID": "index.html",
-    "href": "index.html",
-    "title": "predicting_rental_prices",
-    "section": "",
-    "text": "This is a Quarto website.\nTo learn more about Quarto websites visit https://quarto.org/docs/websites.\n\n1 + 1\n\n[1] 2"
   }
 ]

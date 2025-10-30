@@ -7,9 +7,8 @@ website:
   title: "Predicting Rental Prices"
   navbar:
     left:
-      - href: index.qmd
-        text: Home
-      - about.qmd
+      - href: about.qmd
+        text: Predicting Prices
 
 format:
   html:
